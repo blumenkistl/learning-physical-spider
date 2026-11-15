@@ -659,6 +659,21 @@ function update(m) {
     ? `${fmt(paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length, 3)} over ${paid.length * 100} · last 100: ${fmt(lastPaid, 3)}`
       + (lastPaid <= -0.499 ? ' · at the cap' : '')
     : '—';
+  const termed = m.blocks.filter(b => b.terms);
+  const TERM_NAMES = ['progress', 'stand', 'idle', 'low', 'head', 'stance', 'yaw', 'upright', 'torque'];
+  const termMean = k => termed.reduce((a, b) => a + (b.terms[k] || 0), 0) / termed.length;
+  const shown = termed.length ? TERM_NAMES.filter(k => k === 'progress' || termed.some(b => b.terms[k])) : [];
+  $('reward-terms').textContent = termed.length
+    ? shown.map(k => `${k} ${fmt(termMean(k), 3)}`).join(' · ') + ` (over ${termed.length * 100})`
+    : '—';
+  const r = described && described.reward;
+  const worst = r && r.worst_charge !== undefined ? r.worst_charge : null;
+  const cap = (r && r.cap) || 0.5;
+  const shared = m.blocks.filter(b => b.capped_share !== undefined);
+  const cappedShare = shared.length ? shared.reduce((a, b) => a + b.capped_share, 0) / shared.length : null;
+  $('worst-charge').textContent = (worst === null ? '—' : `${fmt(worst, 3)} of ${fmt(cap, 2)}${worst >= cap ? ' · can reach the cap' : ''}`)
+    + (cappedShare === null ? '' : ` · capped ${Math.round(100 * cappedShare)}% of ${shared.length * 100}`);
+  $('worst-charge').className = 'v' + ((worst !== null && worst >= cap) || cappedShare > 0.05 ? ' warn' : '');
   const stanced = m.blocks.filter(b => b.mean_stance !== undefined && b.mean_stance !== null);
   $('mean-stance').textContent = stanced.length
     ? `${fmt(stanced.reduce((a, b) => a + b.mean_stance, 0) / stanced.length, 2)} over ${stanced.length * 100} · last 100: ${fmt(stanced[stanced.length - 1].mean_stance, 2)}`

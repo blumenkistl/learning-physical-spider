@@ -251,6 +251,18 @@ each off in the shipped law, and one setting of the outcome (`carry`):
   The effort fell by a tenth at most and the head stayed down as often, within the seeds'
   spread (1 % to 88 % head down): no dose changed the posture in 60,000 moments.
 
+The reward is the terms summed and held within the cap of 0.5 (`pay_terms`, `capped`). Each
+block of 100 moments reads every term's mean a moment before the cap (`terms`: progress, stand,
+idle, low, head, stance, yaw, upright, torque; charges negative) and the share of its moments
+the cap held (`capped_share`); the page shows both ("reward terms", "worst charge / capped").
+`/api/describe` names the law's `worst_charge`: the most its hints can take in one moment, every
+charge at its worst (no foot down, every leg held up, lying, head down, on the back at full
+effort; the yaw hint has no bound and is left out, and so is backward progress, an outcome). A
+live law change whose worst charge reaches the cap is noted, not refused: a saved life keeps its
+law. Where the hints meet the cap every act pays the same and nothing is learned from the
+difference; three live laws met it (`idle_leg_pay` 0.1; `stance_pay` 0.1 with `low_pay` 0.2;
+`stance_pay` 0.2). These are readings of the law, never paid.
+
 A reading of the `upright_pay` dose (2026-11-15, body `2df2f0a78159c8d5`, founder genes, compass, ground and
 up, joint layout, `stance_pay` 0.1, 60,000 moments, seeds 0..2; mean of three, the spread
 between seeds is as large as the differences):

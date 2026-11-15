@@ -999,3 +999,42 @@ def test_a_head_on_the_floor_is_charged():
     life.tick()
     with pytest.raises(ValueError):
         Life("random", seed=0, pace=0, runs="/nonexistent", head_pay=-0.1)
+
+
+def test_the_reward_is_its_terms_summed_and_capped():
+    from spider.life import TERMS, capped, pay_terms
+    kwargs = dict(stance=1, stance_pay=0.04, turn=0.3, yaw_pay=0.1, upright=0.2, upright_pay=0.05,
+                  effort=0.5, torque_pay=0.02, belly=True, idle_legs=2.5, idle_leg_pay=0.04,
+                  low=0.7, low_pay=0.08, head=True, head_pay=0.04)
+    for progress in (0.004, -0.003, 0.0):
+        terms = pay_terms(progress, **kwargs)
+        assert set(terms) == set(TERMS)
+        assert all(terms[k] <= 0 for k in TERMS if k not in ("progress", "stand"))   # charges are negative
+        assert capped(terms) == pay(progress, **kwargs)
+    terms = pay_terms(0.0, stance=0, stance_pay=0.2, idle_legs=8, idle_leg_pay=0.1)
+    assert capped(terms) == -0.5 and sum(terms.values()) < -0.5                  # the cap holds the sum
+
+
+def test_blocks_read_the_terms_and_the_capped_share(tmp_path):
+    from spider.life import TERMS
+    life = Life("random", seed=0, pace=0, runs=tmp_path, stance_pay=0.2, low_pay=0.1)
+    for _ in range(BLOCK):
+        life.tick()
+    block = life.blocks[-1]
+    assert set(block["terms"]) == set(TERMS)
+    assert block["terms"]["stance"] < 0 and block["terms"]["head"] == 0.0
+    assert 0.0 <= block["capped_share"] <= 1.0
+    if block["capped_share"] == 0:
+        assert sum(block["terms"].values()) == pytest.approx(block["reward_per_moment"], abs=1e-3)
+
+
+def test_the_worst_charge_is_named_and_a_law_that_reaches_the_cap_is_noted(tmp_path):
+    from spider.life import worst_charge, checked_law
+    assert worst_charge(checked_law()) == 0.0
+    law = checked_law(stance_pay=0.04, idle_leg_pay=0.04, low_pay=0.08, head_pay=0.04)
+    assert worst_charge(law) == pytest.approx(0.04 * 4 + 0.04 * LEGS + 0.08 + 0.04)
+    life = Life("random", seed=0, pace=0, runs=tmp_path, stance_pay=0.04)
+    assert life.describe()["reward"]["worst_charge"] == pytest.approx(0.16)
+    notes = len(life.notes)
+    life.set_law({"idle_leg_pay": 0.1})
+    assert any("the cap is 0.5" in n for n in life.notes[notes:])

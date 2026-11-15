@@ -137,15 +137,16 @@ except Exception:       # pragma: no cover - an install that records no metadata
     CADENCE_VERSION = "unknown"
 
 
-def pay(progress: float, stance: int = STANCE_FLOOR, stance_pay: float = STANCE_PAY,
+def pay_terms(progress: float, stance: int = STANCE_FLOOR, stance_pay: float = STANCE_PAY,
         turn: float = 0.0, yaw_pay: float = YAW_PAY, per_metre: float = PROGRESS_PAY,
         backward_pay: float = BACKWARD_PAY, upright: float = 1.0, upright_pay: float = UPRIGHT_PAY,
         effort: float = 0.0, torque_pay: float = TORQUE_PAY, stance_floor: int = STANCE_FLOOR,
         belly: bool = False, stand_pay: float = STAND_PAY, carry: bool = CARRY,
         idle_legs: float = 0.0, idle_leg_pay: float = IDLE_LEG_PAY,
         low: float = 0.0, low_pay: float = LOW_PAY,
-        head: bool = False, head_pay: float = HEAD_PAY) -> float:
-    """Forward progress pays; backward and standing still pay zero (``backward_pay`` charges
+        head: bool = False, head_pay: float = HEAD_PAY) -> dict[str, float]:
+    """The moment's reward term by term, before the cap (``pay`` sums and caps them; ``TERMS`` names
+    them, charges as negative numbers). Forward progress pays; backward and standing still pay zero (``backward_pay`` charges
     backward progress that share of the forward pay, under the same cap); every foot short of
     ``stance_floor`` (``STANCE_FLOOR`` unless the law says more) planted through the moment takes ``stance_pay``, and every radian turned
     in the moment takes ``yaw_pay``, and every unit the torso's up axis falls short of the world's
@@ -172,8 +173,36 @@ def pay(progress: float, stance: int = STANCE_FLOOR, stance_pay: float = STANCE_
     idle_term = idle_leg_pay * float(idle_legs)
     low_term = low_pay * float(np.clip(low, 0.0, 1.0))
     head_term = head_pay if head else 0.0
-    return float(np.clip(progress_term + stand_term - idle_term - low_term - head_term - stance_term - yaw_term - upright_term - torque_term,
-                         -PROGRESS_CAP, PROGRESS_CAP))
+    return {"progress": progress_term, "stand": stand_term, "idle": -idle_term, "low": -low_term,
+            "head": -head_term, "stance": -stance_term, "yaw": -yaw_term, "upright": -upright_term,
+            "torque": -torque_term}
+
+
+TERMS = ("progress", "stand", "idle", "low", "head", "stance", "yaw", "upright", "torque")
+
+
+def capped(terms: dict[str, float]) -> float:
+    """The terms summed in ``TERMS``'s order and held within ``PROGRESS_CAP``: the reward."""
+    total = 0.0
+    for name in TERMS:
+        total += terms[name]
+    return float(np.clip(total, -PROGRESS_CAP, PROGRESS_CAP))
+
+
+def pay(*args, **kwargs) -> float:
+    """The moment's reward: ``pay_terms`` summed and capped."""
+    return capped(pay_terms(*args, **kwargs))
+
+
+def worst_charge(law: dict[str, Any]) -> float:
+    """The most the law's hints can take in one moment, every charge at its worst: no foot down,
+    every leg held up at its full weight, the torso lying, the head down, on its back at full
+    effort. The yaw hint has no bound and is left out, and so is backward progress, an outcome.
+    At ``PROGRESS_CAP`` or more the hints alone can hold the reward at the cap, where every act
+    pays the same and nothing is learned from the difference."""
+    return float(law.get("stance_pay", 0.0) * law.get("stance_floor", STANCE_FLOOR)
+                 + law.get("idle_leg_pay", 0.0) * LEGS + law.get("low_pay", 0.0) + law.get("head_pay", 0.0)
+                 + 2.0 * law.get("upright_pay", 0.0) + law.get("torque_pay", 0.0))
 
 
 def low_share(z: float) -> float:
@@ -471,8 +500,12 @@ class Life:
             self._take_law(law)
             self.law_changes.append({"moment": self.moments, "law": law})
             self.notes.append(f"law changed at moment {self.moments}: {law_text(law)} (change {len(self.law_changes)}: this life is a schedule)")
+            worst = worst_charge(law)
+            if worst >= PROGRESS_CAP:
+                self.notes.append(f"the hints can take {worst:.3g} a moment at their worst, the cap is {PROGRESS_CAP:g}: "
+                                  "where they meet it every act pays the same and nothing is learned from the difference")
             self.latest = self.snapshot(None)
-        return {"law": law, "changed": True}
+        return {"law": law, "changed": True, "worst_charge": round(worst_charge(law), 4)}
 
     # --- one moment -----------------------------------------------------------------------
 
@@ -523,11 +556,12 @@ class Life:
             else:
                 idle = float(sum(held))
             stance = outcome["stance"] if upright or not self.stance_upright else 0   # feet against the floor on the back stand on nothing
-            self.reward = pay(paid, stance, self.stance_pay, outcome["turn"], self.yaw_pay, self.pay_per_metre,
+            terms = pay_terms(paid, stance, self.stance_pay, outcome["turn"], self.yaw_pay, self.pay_per_metre,
                               self.backward_pay, outcome["upright"], self.upright_pay,
                               outcome["effort"], self.torque_pay, self.stance_floor,
                               outcome["belly"], self.stand_pay, self.carry, idle, self.idle_leg_pay,
                               low_share(self.body.z), self.low_pay, outcome["head"], self.head_pay)
+            self.reward = capped(terms)
             self._count_fallen(outcome["upright"], was_upright, upright, outcome["progress"])
             self.head_moments += outcome["head"]
             self.head_upright_moments += outcome["head"] and upright
@@ -546,7 +580,7 @@ class Life:
             self._block.append({**reading, "progress": outcome["progress"], "stance": outcome["stance"],
                                 "turn": outcome["turn"], "reward": self.reward, "course": along,
                                 "upright": upright, "back": outcome["upright"] < -UPRIGHT, "head": outcome["head"],
-                                "effort": outcome["effort"]})
+                                "effort": outcome["effort"], "terms": terms})
             if len(self._block) >= BLOCK:
                 self._close_block()
             self.latest = self.snapshot(reading)
@@ -614,6 +648,10 @@ class Life:
             "refused": int(sum(1 for r in rows if r["refused"])),
             "ms_per_moment": round(sum(r["ms"] for r in rows) / n, 2),
             "mean_stance": round(sum(r["stance"] for r in rows) / n, 2),
+            # the reward term by term, a mean per moment before the cap, and the share of moments
+            # the cap held (at -cap every act pays the same): readings of the law, never paid
+            "terms": {k: round(sum(r["terms"][k] for r in rows) / n, 4) for k in TERMS},
+            "capped_share": round(sum(1 for r in rows if r["reward"] <= -PROGRESS_CAP) / n, 3),
             "upright_share": round(sum(1 for r in rows if r["upright"]) / n, 3),
             "falls": self.falls,                                   # over the life, at the block's end
             "rightings": self.rightings,                           # over the life, at the block's end
@@ -1020,7 +1058,8 @@ class Life:
                       "abdomen": list(ABDOMEN), "abdomen_pos": list(ABDOMEN_POS),
                       "waist": [list(WAIST[0]), list(WAIST[1])], "waist_radius": WAIST_RADIUS,
                       "leg_radius": LEG_RADIUS, "foot_radius": FOOT_RADIUS},
-            "reward": {**self.law(), "cap": PROGRESS_CAP, "mark": round(self.mark, 4)},
+            "reward": {**self.law(), "cap": PROGRESS_CAP, "mark": round(self.mark, 4),
+                       "worst_charge": round(worst_charge(self.law()), 4)},
             "upright": UPRIGHT,
             "law_changes": list(self.law_changes),
             "genes": dict(self.genes or {}),

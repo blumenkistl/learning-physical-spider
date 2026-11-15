@@ -42,6 +42,7 @@ button.on { background: #203a4a; border-color: var(--accent); }
 #learning .small { margin-top: 3px; }
 #brain { display: block; width: 320px; height: 96px; margin-top: 6px; background: #0a0d12; border-radius: 6px; }
 #upright.fallen { color: #ff6b6b; }
+.grid .v.warn { color: #ff6b6b; }
 #mode.aroused { color: #ffb454; } #mode.routine { color: #7ee787; } #mode.refused { color: #ff6b6b; }
 #brainpanel { position: fixed; top: 12px; right: 12px; width: 440px; height: min(560px, calc(100% - 24px)); display: flex; flex-direction: column; padding: 10px 12px 8px; background: var(--panel); border: 1px solid #262c38; border-radius: 10px; backdrop-filter: blur(6px); }
 #brainpanel .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 8px; }
