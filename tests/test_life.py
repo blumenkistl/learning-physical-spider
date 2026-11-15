@@ -444,13 +444,13 @@ def test_reset_takes_a_birth(tmp_path):
 
 def test_a_saved_life_keeps_its_seed_and_senses(tmp_path):
     life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
-    life.control("reset", {"seed": 3, "compass": True, "genes": "gamma=0.99"})
+    life.control("reset", {"seed": 3, "compass": False, "genes": "gamma=0.99"})
     for _ in range(4):
         life.tick()
     life.save()
     plain = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")   # the flags name another birth
     assert plain.load()["custody"] == "kept"
-    assert plain.seed == 3 and plain.senses.compass is True and plain.genes == {"gamma": 0.99}
+    assert plain.seed == 3 and plain.senses.compass is False and plain.genes == {"gamma": 0.99}
     assert plain.describe()["inputs"] == life.describe()["inputs"]
     assert sum("keeps its own" in note for note in plain.notes) == 2        # seed, senses
     for _ in range(3):
@@ -523,6 +523,34 @@ def test_the_course_is_set_live_as_the_heading_held_and_is_saved(tmp_path):
         life.reset({"heading": 1.0})
 
 
+def test_the_up_sense_is_a_birth_option_saved_with_the_life(tmp_path):
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", senses=Senses(up=True))
+    assert life.describe()["up"] is True and life.describe()["inputs"] == 8 * 55 + 8
+    for _ in range(3):
+        life.tick()
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    assert again.load()["custody"] == "kept"
+    assert again.senses.up is True and again.policy.brain.inputs == 8 * 55 + 8
+    assert any("the up sense" in note for note in again.notes)
+    born = life.control("reset", {"up": False})
+    assert born["up"] is False and life.policy.brain.inputs == 8 * 52 + 8 and "up sense" not in life.notes[0]
+    life.control("reset", {"up": True})
+    assert "the up sense" in life.notes[0] and life.policy.brain.inputs == 8 * 55 + 8
+
+
+def test_a_life_saved_before_the_up_sense_continues_without_it(tmp_path):
+    import json
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", senses=Senses(compass=True, ground=True))
+    life.tick()
+    life.save()
+    sidecar = json.loads(life.sidecar.read_text())
+    del sidecar["senses"]["up"]
+    life.sidecar.write_text(json.dumps(sidecar))
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")       # the default has it
+    assert again.load()["custody"] == "kept" and again.senses.up is False
+
+
 def test_the_ground_sense_is_a_birth_option_saved_with_the_life(tmp_path):
     life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", senses=Senses(compass=True, ground=True),
                 course=0.0)
@@ -541,7 +569,7 @@ def test_the_ground_sense_is_a_birth_option_saved_with_the_life(tmp_path):
     assert life.senses.ground is False and life.senses.compass is True and life.policy.brain.inputs == 8 * 54 + 8
     assert "a compass" in life.notes[0] and "ground" not in life.notes[0]
     life.control("reset", {"ground": True, "compass": False})
-    assert life.senses.options() == {"per": 8, "compass": False, "ground": True}
+    assert life.senses.options() == {"per": 8, "compass": False, "ground": True, "up": False}
     assert "the ground sense" in life.notes[0] and life.policy.brain.inputs == 8 * 54 + 8
 
 
@@ -614,7 +642,7 @@ def test_the_displacement_is_from_the_birth_point_and_survives_recentres_and_sav
     before = life.displacement_m()
     life.tick()
     assert life.recentres == 1 and life.body.x == 0.0 and life.body.y == 0.0
-    assert abs(life.displacement_m() - before) < 0.01
+    assert abs(life.displacement_m() - before) < 0.02     # one moment's step, no jump of 5.5 m
     # a recentre by hand neither
     place(life.body, x=1.0)
     life.control("recentre")
@@ -737,3 +765,172 @@ def test_upright_moments_and_falls_are_counted_and_saved(tmp_path):
     again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
     again.load()
     assert again.falls == life.falls and again.upright_moments == life.upright_moments
+
+
+def test_a_fall_and_its_righting_are_counted_and_saved(tmp_path):
+    """The fallen readings: a fall onto the back, its length, what it made and earned, and the
+    righting that ends it. Turned over and back by hand here, in a test only: a life never is."""
+    import mujoco
+    life = Life("random", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    life.tick()
+
+    step = life.body.step
+
+    def turned(angle):
+        def moment(commands):                    # the moment runs, then ends turned: a fall inside it
+            outcome = step(commands)
+            life.body.data.qpos[3:7] = [math.cos(angle / 2), math.sin(angle / 2), 0, 0]
+            life.body.data.qvel[:] = 0
+            mujoco.mj_forward(life.body.model, life.body.data)
+            return {**outcome, "upright": life.body.upright}
+        return moment
+
+    life.body.step = turned(math.pi)
+    for _ in range(3):
+        life.tick()
+    assert life.falls == 1 and life.fallen_for == 3 and life.back_moments == 3 and life.rightings == 0
+    life.body.step = turned(0.0)
+    life.tick()
+    assert life.rightings == 1 and life.righted_after == 3 and life.longest_fall == 3 and life.fallen_for == 0
+    assert life.latest["rightings"] == 1
+
+
+def test_the_fallen_readings_survive_a_save(tmp_path):
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    life.tick()
+    life.rightings, life.righted_after, life.longest_fall, life.back_moments = 2, 40, 30, 12
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.fallen_state() == life.fallen_state()
+    life.control("reset", {})
+    assert life.rightings == 0 and life.righted_after == 0 and life.fallen_for == 0
+
+
+def test_the_upright_hint_takes_the_tilt_from_level_and_is_off_by_default():
+    assert pay(0.0, upright=-1.0) == 0.0                                    # off: being upright is not paid
+    assert pay(0.0, upright=1.0, upright_pay=0.05) == 0.0                   # level costs nothing, earns nothing
+    assert pay(0.0, upright=0.0, upright_pay=0.05) == pytest.approx(-0.05)  # on a side
+    assert pay(0.0, upright=-1.0, upright_pay=0.05) == pytest.approx(-0.1)  # on the back
+    assert pay(0.0, 0, stance_pay=0.1, upright=-1.0, upright_pay=0.05) == pytest.approx(-0.5)   # at the cap, not past it
+    assert pay(0.0, 0, stance_pay=0.1, upright=-1.0, upright_pay=0.1) == -0.5                   # past it: clipped
+    with pytest.raises(ValueError):
+        Life("random", seed=0, pace=0, runs="/nonexistent", upright_pay=-0.1)
+
+
+
+def test_the_torque_hint_takes_the_effort_and_is_off_by_default(tmp_path):
+    assert pay(0.0, effort=1.0) == 0.0                                      # off: strength is free
+    assert pay(0.0, effort=0.0, torque_pay=0.1) == 0.0                      # slack costs nothing
+    assert pay(0.0, effort=0.5, torque_pay=0.1) == pytest.approx(-0.05)
+    assert pay(0.25, effort=0.5, torque_pay=0.1) == pytest.approx(0.45)    # progress less the hint
+    with pytest.raises(ValueError):
+        Life("random", seed=0, pace=0, runs="/nonexistent", torque_pay=-0.1)
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", torque_pay=0.2)
+    assert life.law()["torque_pay"] == 0.2 and "torque 0.2" in law_text(life.law())
+    for _ in range(5):
+        life.tick()
+    assert 0.0 < life.effort_sum / 5 <= 1.0
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    again.load()                                     # the law is the life's: the saved hint comes back
+    assert again.torque_pay == 0.2 and again.effort_sum == life.effort_sum
+
+def test_the_pitch_and_height_of_the_upright_moments_are_read_and_saved(tmp_path):
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    for _ in range(20):
+        life.tick()
+    assert life.upright_moments > 0
+    assert abs(life.pitch_upright_sum / life.upright_moments) < 1.0     # radians, a standing body near level
+    assert 0.0 < life.height_upright_sum / life.upright_moments < 0.5   # metres above the floor
+    assert life.fallen_state()["height_upright_sum"] == life.height_upright_sum
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.pitch_upright_sum == life.pitch_upright_sum and again.head_pitch_sum == life.head_pitch_sum
+
+
+def test_the_stance_floor_is_the_law_and_four_by_default(tmp_path):
+    assert pay(0.0, stance=4, stance_pay=0.1) == 0.0                         # four down: nothing taken
+    assert pay(0.0, stance=4, stance_pay=0.1, stance_floor=6) == pytest.approx(-0.2)
+    assert pay(0.0, stance=8, stance_pay=0.1, stance_floor=8) == 0.0
+    for wrong in (0, 9, 4.5):
+        with pytest.raises(ValueError):
+            Life("random", seed=0, pace=0, runs="/nonexistent", stance_floor=wrong)
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", stance_pay=0.07, stance_floor=6)
+    assert life.law()["stance_floor"] == 6 and "stance 0.07 of 6" in law_text(life.law())
+    assert life.describe()["reward"]["stance_floor"] == 6
+    for _ in range(5):
+        life.tick()
+    assert life.belly_moments >= life.belly_upright_moments >= 0
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    again.load()                                     # the law is the life's: the saved floor comes back
+    assert again.stance_floor == 6 and again.belly_moments == life.belly_moments
+    assert "stance 0.1" in law_text(Life("random", seed=0, pace=0, runs=tmp_path, stance_pay=0.1).law())
+
+
+def _on_the_back_with_feet_down(life):
+    step = life.body.step
+
+    def moment(commands):                        # a test's hand only: four feet "planted" on the back
+        return {**step(commands), "stance": 4, "upright": -1.0, "progress": 0.0}
+    life.body.step = moment
+
+
+def test_feet_on_the_back_stand_on_nothing(tmp_path):
+    life = Life("random", seed=0, pace=0.0, runs=tmp_path, stance_pay=0.1)
+    assert life.law()["stance_upright"] is True and life.law()["upright_pay"] == 0.0
+    _on_the_back_with_feet_down(life)
+    life.tick()
+    assert life.reward == pytest.approx(-0.4)                              # four feet short: none counts
+    old = Life("random", seed=0, pace=0.0, runs=tmp_path / "old", stance_pay=0.1, stance_upright=False)
+    _on_the_back_with_feet_down(old)
+    old.tick()
+    assert old.reward == 0.0                                               # the law before: four feet, no charge
+    level = Life("random", seed=0, pace=0.0, runs=tmp_path / "level", stance_pay=0.1, upright_pay=0.05)
+    _on_the_back_with_feet_down(level)
+    level.tick()
+    assert level.reward == pytest.approx(-0.5)
+    assert "upright 0.05" in law_text(level.law()) and "(any foot)" in law_text(old.law())
+
+
+def test_a_life_saved_before_stance_upright_keeps_every_foot(tmp_path):
+    import json
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", stance_pay=0.1)
+    life.tick()
+    life.save()
+    sidecar = json.loads(life.sidecar.read_text())
+    del sidecar["law"]["stance_upright"], sidecar["law"]["upright_pay"]
+    life.sidecar.write_text(json.dumps(sidecar))
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", stance_pay=0.1)
+    assert again.load()["custody"] == "kept"
+    assert again.law()["stance_upright"] is False and again.law()["upright_pay"] == 0.0
+    assert any("keeps its own" in note for note in again.notes)
+
+
+def test_standing_is_given_the_stand_pay_and_the_carry_law_pays_only_a_carried_body(tmp_path):
+    assert pay(0.0, stance=4, stand_pay=0.05) == pytest.approx(0.05)             # upright, belly up, four down
+    assert pay(0.0, stance=3, stand_pay=0.05) == 0.0                             # short of the floor
+    assert pay(0.0, stance=4, stand_pay=0.05, belly=True) == 0.0                 # on the belly
+    assert pay(0.0, stance=4, stand_pay=0.05, upright=0.2) == 0.0                # not upright
+    assert pay(0.0, stance=6, stand_pay=0.05, stance_floor=6) == pytest.approx(0.05)
+    assert pay(0.01, belly=True) == pytest.approx(0.4)                           # off: the belly is paid as ever
+    assert pay(0.01, belly=True, carry=True) == 0.0                              # carried law: dragged pays nothing
+    assert pay(0.01, belly=False, carry=True) == pytest.approx(0.4)
+    assert pay(-0.01, belly=True, carry=True, backward_pay=1.0) == pytest.approx(-0.4)   # backward still charged
+    for wrong in (-0.1, 0.6):
+        with pytest.raises(ValueError):
+            Life("random", seed=0, pace=0, runs="/nonexistent", stand_pay=wrong)
+    plain = Life("random", seed=0, pace=0, runs=tmp_path)
+    assert plain.law()["stand_pay"] == 0.0 and plain.law()["carry"] is False
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", stand_pay=0.03, carry=True)
+    assert "stand 0.03" in law_text(life.law()) and "carried" in law_text(life.law())
+    for _ in range(5):
+        life.tick()
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    again.load()                                     # the law is the life's: it comes back with it
+    assert again.stand_pay == 0.03 and again.carry is True
+    life.set_law({"stand_pay": 0.0, "carry": False})   # changed on the living brain, like every setting
+    assert life.stand_pay == 0.0 and life.carry is False

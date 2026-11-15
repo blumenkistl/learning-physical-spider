@@ -6,7 +6,10 @@ The readings are the twenty-four joint angles, the twenty-four servo setpoints (
 servo), the forward speed and the yaw rate, and, new in a body that can tilt, the torso's roll
 and pitch: the brain can feel that it leans or lies on its side, which the learning spider's
 body never did. ``compass`` and ``ground`` are the learning spider's options of the same names,
-named in every reading made under them.
+named in every reading made under them. ``up`` is new: the world's up in the torso's frame, three
+readings that tell the side from the back, which roll and pitch cannot (roll is coded over
++-pi/2 and clamped, so a body on its back reads as one on its side, flickering between the two
+sides as the roll crosses +-pi).
 """
 
 from __future__ import annotations
@@ -34,16 +37,19 @@ COMPASS_NAMES = ["heading_cos", "heading_sin"]
 COMPASS_RANGES = [(-1.0, 1.0), (-1.0, 1.0)]
 GROUND_NAMES = ["ground_vx", "ground_vy"]
 GROUND_RANGES = [SPEED_RANGE, SPEED_RANGE]
+UP_NAMES = ["up_fwd", "up_left", "up_up"]
+UP_RANGES = [(-1.0, 1.0)] * 3
 
 
 class Senses:
-    def __init__(self, per: int = PER, compass: bool = False, ground: bool = False):
+    def __init__(self, per: int = PER, compass: bool = False, ground: bool = False, up: bool = False):
         self.compass = bool(compass)
         self.ground = bool(ground)
+        self.up = bool(up)
         self.names = (list(READING_NAMES) + (COMPASS_NAMES if self.compass else [])
-                      + (GROUND_NAMES if self.ground else []))
+                      + (GROUND_NAMES if self.ground else []) + (UP_NAMES if self.up else []))
         self.ranges = (list(RANGES) + (COMPASS_RANGES if self.compass else [])
-                       + (GROUND_RANGES if self.ground else []))
+                       + (GROUND_RANGES if self.ground else []) + (UP_RANGES if self.up else []))
         self.code = PopulationCode(self.ranges, per=per)
         self.per = per
         self.inputs = self.code.inputs + LEGS
@@ -56,6 +62,8 @@ class Senses:
             own += [[math.cos(spider.heading), math.sin(spider.heading)]]
         if self.ground:
             own += [list(spider.ground_velocity())]
+        if self.up:
+            own += [spider.up()]
         return np.concatenate(own)
 
     def observe(self, spider: Spider) -> np.ndarray:
@@ -69,10 +77,17 @@ class Senses:
         return names + [f"planted{i}" for i in range(LEGS)]
 
     def options(self) -> dict:
-        return {"per": self.per, "compass": self.compass, "ground": self.ground}
+        return {"per": self.per, "compass": self.compass, "ground": self.ground, "up": self.up}
+
+    def words(self) -> str:
+        """The options in a note's words: ", a compass, the ground sense, the up sense"."""
+        return ((", a compass" if self.compass else "") + (", the ground sense" if self.ground else "")
+                + (", the up sense" if self.up else ""))
 
 
-DEFAULT = Senses()
+# A newborn's senses unless a birth says otherwise: the compass, the ground sense and the up sense
+# are on (the owner's choice, 2026-11-15, unmeasured against them off); ``Senses()`` is the plain set.
+DEFAULT = Senses(compass=True, ground=True, up=True)
 INPUTS = DEFAULT.inputs
 
 

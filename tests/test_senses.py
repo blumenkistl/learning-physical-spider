@@ -8,7 +8,8 @@ from spider.senses import PER, Senses
 def test_the_senses_read_joints_setpoints_motion_and_tilt_and_the_feet():
     senses = Senses()
     spider = Spider()
-    spider.step([1] * JOINTS)                     # born with the soles on the floor: one moment of weight plants them
+    for _ in range(2):                            # born with the soles on the floor: the heavy rear rocks back once,
+        spider.step([1] * JOINTS)                 # and two moments of weight plant them all
     row = senses.observe(spider)
     assert row.shape == (1, senses.inputs) == (1, 52 * PER + LEGS)
     assert np.all((row >= 0) & (row <= 1))
@@ -28,3 +29,30 @@ def test_a_tilted_body_reads_its_roll():
 
 def test_compass_and_ground_are_options():
     assert Senses(compass=True, ground=True).inputs == Senses().inputs + 4 * PER
+
+
+def _rolled(angle):
+    import mujoco
+    spider = Spider()
+    spider.data.qpos[3:7] = [np.cos(angle / 2), np.sin(angle / 2), 0, 0]
+    mujoco.mj_forward(spider.model, spider.data)
+    return spider
+
+
+def test_the_up_sense_tells_the_back_from_a_side_where_roll_cannot():
+    """Roll is coded over +-pi/2 and clamped: on the back it reads as a side, and which side
+    flips as the roll crosses pi. The up sense reads the back as the back."""
+    plain, up = Senses(), Senses(up=True)
+    assert up.inputs == plain.inputs + 3 * PER and up.names[-3:] == ["up_fwd", "up_left", "up_up"]
+    side, back_left, back_right = _rolled(np.pi / 2), _rolled(np.pi - 0.05), _rolled(-np.pi + 0.05)
+    roll = slice(plain.names.index("roll") * PER, (plain.names.index("roll") + 1) * PER)
+    assert np.allclose(plain.observe(side)[0, roll], plain.observe(back_left)[0, roll])    # the back reads as a side
+    assert not np.allclose(plain.observe(back_left)[0, roll], plain.observe(back_right)[0, roll])   # and flickers
+    assert np.allclose(Spider().up(), [0, 0, 1])
+    assert np.allclose(side.up(), [0, 1, 0], atol=1e-9)         # rolled left side up, lying on the right: up is to its left
+    assert back_left.up()[2] < -0.99 and back_right.up()[2] < -0.99
+    tail = slice(plain.code.inputs, plain.code.inputs + 3 * PER)
+    near = np.abs(up.observe(back_left)[0, tail] - up.observe(back_right)[0, tail]).max()
+    flip = np.abs(plain.observe(back_left)[0, roll] - plain.observe(back_right)[0, roll]).max()
+    apart = np.abs(up.observe(side)[0, tail] - up.observe(back_left)[0, tail]).max()
+    assert near < 0.25 and flip > 0.9 and apart > 0.9     # 0.1 rad apart on the back: near for up, a flip for roll

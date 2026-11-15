@@ -80,7 +80,7 @@ function makeGrid(hex) {                              // rebuilt to recolour
   scene.add(grid);
 }
 makeGrid(GRID_COLOUR);
-const rim = new THREE.Mesh(new THREE.RingGeometry(4.98, 5.02, 256), new THREE.MeshBasicMaterial({ color: 0x5ad1ff, side: THREE.DoubleSide }));
+const rim = new THREE.Mesh(new THREE.RingGeometry(4.98, 5.02, 256), new THREE.MeshBasicMaterial({ color: 0x357a38, side: THREE.DoubleSide }));
 rim.position.z = 0.002;
 scene.add(rim);
 
@@ -224,12 +224,15 @@ const spider = new THREE.Group();
 scene.add(spider);
 // Colours after a red-knee tarantula's photograph: black legs with orange knees and pale rings,
 // an orange-tan prosoma with a dark star at its centre, a dark brown abdomen with brown hair.
+// Underneath, as on a tarantula's ventral side: a black sternum under the prosoma and a black
+// belly under the abdomen with two pairs of pale book-lung patches at its front, so a body on
+// its back shows its underside.
 const BLACK = 0x15110e, ORANGE = 0xe0662a, RING = 0xd08850, TAN = 0xd48a4c, STAR = 0x2a1a12;
-const ABDOMEN_BROWN = 0x24170f;
+const ABDOMEN_BROWN = 0x24170f, STERNUM = 0x0b0807, BELLY = 0x0a0706, BOOK_LUNG = 0xb8a07a;
 const legSkin = new THREE.MeshStandardMaterial({ color: BLACK, roughness: 0.85, metalness: 0.05 });
 const bandSkin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 });   // painted legs
 const proSkin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8, metalness: 0.05 });     // painted prosoma
-const abdomenSkin = new THREE.MeshStandardMaterial({ color: ABDOMEN_BROWN, roughness: 0.9, metalness: 0.0 });
+const abdomenSkin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0.0 });   // painted abdomen
 const kneeSkin = new THREE.MeshStandardMaterial({ color: ORANGE, roughness: 0.8, metalness: 0.0 });
 const ankleSkin = new THREE.MeshStandardMaterial({ color: RING, roughness: 0.85, metalness: 0.0 });
 const hairSkin = new THREE.LineBasicMaterial({ color: 0x0a0807, transparent: true, opacity: 0.8 });
@@ -242,8 +245,12 @@ function paint(geometry, colour) {
   geometry.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
   return geometry;
 }
-// The prosoma: tan, with a dark star of eight rays at the top centre.
-const prosomaColour = (x, y, z) => (z + 0.14 * Math.cos(8 * Math.atan2(y, x)) > 0.72 ? STAR : TAN);
+// The prosoma: tan, with a dark star of eight rays at the top centre and the black sternum below.
+const prosomaColour = (x, y, z) => (z < -0.3 ? STERNUM : z + 0.14 * Math.cos(8 * Math.atan2(y, x)) > 0.72 ? STAR : TAN);
+// The abdomen in its own unit space (x toward the prosoma, z up): brown above, black below, and
+// the book lungs as two pale pairs on the belly's front.
+const bookLung = (x, y, z) => z < -0.45 && Math.abs(Math.abs(y) - 0.3) < 0.12 && (Math.abs(x - 0.62) < 0.08 || Math.abs(x - 0.38) < 0.08);
+const abdomenColour = (x, y, z) => (bookLung(x, y, z) ? BOOK_LUNG : z < -0.25 ? BELLY : ABDOMEN_BROWN);
 // Along a leg segment (y from -0.5 at its root to 0.5 at its end): the femur's end, the patella
 // and a ring before the ankle are orange; the rest is black.
 const femurColour = (x, y) => (y > 0.38 ? ORANGE : BLACK);
@@ -277,11 +284,11 @@ function hairs(count, onSphere, lengthMin, lengthMax, colour) {
 }
 const prosoma = new THREE.Mesh(paint(new THREE.SphereGeometry(1, 48, 32), prosomaColour), proSkin);   // the model's torso ellipsoid
 prosoma.castShadow = true;
-prosoma.add(hairs(500, true, 0.08, 0.18, (x, y, z) => (prosomaColour(x, y, z) === STAR ? STAR : 0xf0b070)));
+prosoma.add(hairs(500, true, 0.08, 0.18, (x, y, z) => (z < -0.3 ? 0x1a1410 : prosomaColour(x, y, z) === STAR ? STAR : 0xf0b070)));
 spider.add(prosoma);
-const abdomen = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), abdomenSkin);
+const abdomen = new THREE.Mesh(paint(new THREE.SphereGeometry(1, 64, 48), abdomenColour), abdomenSkin);
 abdomen.castShadow = true;
-abdomen.add(hairs(1200, true, 0.08, 0.22, 0x7a5034));   // brown hair over the dark abdomen
+abdomen.add(hairs(1200, true, 0.08, 0.22, (x, y, z) => (z < -0.25 ? 0x1a1410 : 0x7a5034)));   // brown hair above, black below
 spider.add(abdomen);
 const waist = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 1, 12), legSkin);   // the pedicel
 spider.add(waist);
@@ -478,7 +485,7 @@ let lawFilled = null;                                  // the law the fields wer
 function describedBy(d) {
   described = d;
   if (lastState) $('law').textContent = law(lastState);
-  $('body').textContent = `MuJoCo ${d.mujoco} · model ${d.model}` + ({ leg: ', a slot per leg', pair: ', a slot per pair' }[d.layout] || '') + (d.compass ? ', a compass' : '') + (d.ground ? ', the ground sense' : '');
+  $('body').textContent = `MuJoCo ${d.mujoco} · model ${d.model}` + ({ leg: ', a slot per leg', pair: ', a slot per pair' }[d.layout] || '') + (d.compass ? ', a compass' : '') + (d.ground ? ', the ground sense' : '') + (d.up ? ', the up sense' : '');
   const r = d.reward || {};
   // The fields are filled from the server's law only when that law is new to the page: a
   // description re-read for another reason (the socket reconnecting) leaves a half-made edit alone.
@@ -494,9 +501,10 @@ function describedBy(d) {
   $('birth-layout').value = d.layout || 'joint';
   $('birth-compass').checked = !!d.compass;
   $('birth-ground').checked = !!d.ground;
+  $('birth-up').checked = !!d.up;
   const genes = { ...(d.genes || {}) };
   $('birth-hold').value = genes.hold == null ? '' : genes.hold;
-  $('birth-entropy').value = genes.entropy == null ? 0 : genes.entropy;
+  $('birth-entropy').value = genes.entropy == null ? FOUNDER_ENTROPY : genes.entropy;
   $('birth-maturity').checked = !!genes.maturity;
   $('birth-code').value = genes.code == null ? '' : genes.code;
   $('birth-learned-code').value = genes.learned_code == null ? '' : genes.learned_code;
@@ -504,7 +512,10 @@ function describedBy(d) {
   $('birth-genes').value = geneWords(genes);
   $('genesline').textContent = 'live brain: ' + (geneWords(d.genes) || 'founder genes') + ' · seed ' + d.seed;
 }
-const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'high_water', 'old_ground', 'pay_per_metre', 'backward_pay', 'course', 'strict'];
+// high_water and old_ground stay law settings (the nursery's --high-water and --old-ground) but are
+// not on the page: unmeasured on this body and off; a life born with them still shows its mark.
+const FOUNDER_ENTROPY = 0.0;   // spider/brain.py's founder gene (tests/test_server.py holds them equal)
+const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry'];
 // The nursery's words for a brain's gene overrides: {gamma: 0.99, arousal: {need: 0}} → "gamma=0.99 arousal.need=0".
 function geneWords(genes, prefix = '') {
   return Object.entries(genes || {}).map(([k, v]) =>
@@ -526,7 +537,11 @@ function law(m) {
   if (r.pay_per_metre !== 40) parts.push(`${r.pay_per_metre}/m`);
   if (r.backward_pay) parts.push(`backward ${r.backward_pay}`);
   if (r.high_water) parts.push(`high-water${r.old_ground ? ' leaking ' + r.old_ground : ''} · mark ${fmt(m.mark)} m`);
-  if (r.stance_pay) parts.push(`stance ${r.stance_pay}`);
+  if (r.stance_pay) parts.push(`stance ${r.stance_pay}${r.stance_floor && r.stance_floor !== 4 ? ' of ' + r.stance_floor : ''}${r.stance_upright === false ? ' (any foot)' : ''}`);
+  if (r.stand_pay) parts.push(`stand ${r.stand_pay}`);
+  if (r.carry) parts.push('carried');
+  if (r.upright_pay) parts.push(`upright ${r.upright_pay}`);
+  if (r.torque_pay) parts.push(`torque ${r.torque_pay}`);
   if (r.yaw_pay) parts.push(`yaw ${r.yaw_pay}`);
   const changes = described.law_changes ? described.law_changes.length : 0;
   if (changes) parts.push(`a schedule: changed ${changes}×`);
@@ -732,17 +747,21 @@ function birth() {
   // the reward learner's three options and the two codes have fields of their own; the rest is the text, in the nursery's words
   const words = [$('birth-genes').value.trim()];
   if ($('birth-hold').value !== '') words.push('hold=' + num($('birth-hold')));
-  if (num($('birth-entropy')) > 0) words.push('entropy=' + Number($('birth-entropy').value));
+  // entropy is sent whenever it is not the founder's, 0 included: an empty word would be the founder's 0
+  if ($('birth-entropy').value !== '' && Number($('birth-entropy').value) !== FOUNDER_ENTROPY) words.push('entropy=' + Number($('birth-entropy').value));
   if ($('birth-maturity').checked) words.push('maturity=true');
   if (num($('birth-code')) > 0) words.push('code=' + Math.round(Number($('birth-code').value)));
   if (num($('birth-learned-code')) > 0) words.push('learned_code=' + Math.round(Number($('birth-learned-code').value)));
   return { seed: num($('birth-seed')), layout: $('birth-layout').value,
            compass: $('birth-compass').checked, ground: $('birth-ground').checked,
+           // up only when it matters (ticked, or a life that has it): a server older than the up
+           // sense refuses a birth that names it, and a birth that leaves it out keeps the life's
+           ...($('birth-up').checked || (described && described.up) ? { up: $('birth-up').checked } : {}),
            genes: words.filter(Boolean).join(' ') };
 }
 function resetQuestion(b) {
   return 'Reset everything?\n\nA newborn brain replaces the live one: seed ' + b.seed + ({ leg: ', a slot per leg', pair: ', a slot per pair' }[b.layout] || '')
-    + (b.compass ? ', a compass' : '') + (b.ground ? ', the ground sense' : '') + ', ' + (b.genes ? 'genes ' + b.genes : 'founder genes') + '.\n'
+    + (b.compass ? ', a compass' : '') + (b.ground ? ', the ground sense' : '') + (b.up ? ', the up sense' : '') + ', ' + (b.genes ? 'genes ' + b.genes : 'founder genes') + '.\n'
     + 'The world returns to the origin, every counter goes to zero and the saved life in runs/ is deleted.\n\n'
     + 'The brain that has lived until now is gone for good.';
 }
@@ -759,9 +778,10 @@ function toast(anchor, text) {
   requestAnimationFrame(() => t.classList.add('show'));
   setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 1100);
 }
+let lastRefusal = '';
 async function control(body) {
   const r = await fetch('/api/control', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  if (!r.ok) { $('notes').textContent = await r.text(); return null; }
+  if (!r.ok) { lastRefusal = await r.text(); $('notes').textContent = lastRefusal; return null; }
   return r.json();
 }
 document.querySelectorAll('button[data-op]').forEach(b => b.addEventListener('click', async () => {
@@ -772,7 +792,10 @@ document.querySelectorAll('button[data-op]').forEach(b => b.addEventListener('cl
     initializing(true);
   } else if (b.dataset.value !== undefined) body.value = isNaN(b.dataset.value) ? b.dataset.value : Number(b.dataset.value);
   const result = await control(body);
-  if (!result && b.dataset.op === 'reset') initializing(false);   // refused: the old life goes on
+  if (!result && b.dataset.op === 'reset') {                       // refused: the old life goes on, and says why
+    initializing(false);
+    window.alert('No birth: ' + lastRefusal + '\nThe old life goes on.');
+  }
   if (result && b.dataset.op === 'reset') location.reload();
   else if (result && b.dataset.op === 'load') refreshDescription();
   else if (result && b.dataset.op === 'save') toast(b, result.saved ? 'saved' : (result.why || 'not saved'));

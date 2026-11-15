@@ -60,7 +60,11 @@ def _tibia_rest(k: int) -> float:
 
 TIBIA_REST = tuple(_tibia_rest(k) for k in range(4))   # foot level with the stance at knee 0
 HIP_RANGE = (-0.6, 0.6)
-LIFT_RANGE = (-0.4, 0.4)                # chosen: the femur's rise 0.2..1.0 rad, + up
+LIFT_RANGE = (0.0, 1.6)                 # chosen: the femur's rise 0.6..2.2 rad, + up; from about 1.6 a body
+                                        # on its back can lever itself onto a side and over (probed); 2.0
+                                        # folded the legs over the back of a standing body (a live reading);
+                                        # below 0 (-0.4 until b4d6dbf48b2bcb93) the legs pressed the body up
+                                        # to three times its height and over onto its head
 KNEE_RANGE = (-0.5, 1.0)
 FOOT_RADIUS = 0.008
 LEG_RADIUS = 0.006
@@ -70,12 +74,15 @@ TORSO_MASS = 0.022                      # kg; with the legs 0.03, the learning s
 FEMUR_MASS = 0.0005
 TIBIA_MASS = 0.00045                    # the learning spider's 0.0005 below the knee, split by length
 TARSUS_MASS = 0.00005
-COM = (-0.05, 0.0, 0.0)                 # the torso's centre of mass: the learning spider's REAR_COM
+ABDOMEN_SHARE = 0.5                     # the abdomen's share of TORSO_MASS, the rest the prosoma's: a heavy
+                                        # rear holds the head up (it was 0.16 in effect, body 2df2f0a78159c8d5)
 
 # --- muscles and contacts, chosen ------------------------------------------------------------
 HIP_TORQUE = 0.02                       # N m: the learning spider's spring hip
 HIP_STIFFNESS = 0.5                     # N m/rad
-LIFT_TORQUE = 0.06                      # N m: a stance foot of four carries 0.074 N on a lever of about 0.4 m
+LIFT_TORQUE = 0.06                      # N m: a stance foot of four carries 0.074 N on a lever of about 0.4 m; raising
+                                        # with half (ba883865be0d1a74) and 0.04 with the knee at 0.025 (3caf8308d81af904)
+                                        # were tried and lay fallen more (README)
 LIFT_STIFFNESS = 1.5
 KNEE_TORQUE = 0.04                      # N m: a stance knee of four carries about 0.01
 KNEE_STIFFNESS = 1.0
@@ -146,7 +153,6 @@ def _actuators() -> str:
 def build() -> str:
     """The MJCF document of the spider on a flat floor."""
     legs = "".join(_leg(i) for i in range(LEGS))
-    inertia = _f(*(TORSO_MASS * (BODY[(a + 1) % 3] ** 2 + BODY[(a + 2) % 3] ** 2) / 5 for a in range(3)))
     return f"""<mujoco model="learning-physical-spider">
   <compiler angle="radian" autolimits="true"/>
   <option timestep="{TIMESTEP}" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic"/>
@@ -161,10 +167,9 @@ def build() -> str:
     <geom name="floor" type="plane" size="0 0 0.05" friction="{FOOT_MU} 0.005 0.0001"/>
     <body name="torso" pos="0 0 {HEIGHT + FOOT_RADIUS:.6g}">
       <freejoint name="root"/>
-      <inertial pos="{_f(*COM)}" mass="{TORSO_MASS}" diaginertia="{inertia}"/>
-      <geom name="body" type="ellipsoid" size="{_f(*BODY)}" mass="0" class="belly"/>
+      <geom name="body" type="ellipsoid" size="{_f(*BODY)}" mass="{TORSO_MASS * (1 - ABDOMEN_SHARE):.6g}" class="belly"/>
       <geom name="head" type="sphere" pos="{HEAD_X} 0 0" size="{HEAD_RADIUS}" mass="0" class="belly"/>
-      <geom name="abdomen" type="ellipsoid" pos="{_f(*ABDOMEN_POS)}" size="{_f(*ABDOMEN)}" mass="0" class="belly"/>
+      <geom name="abdomen" type="ellipsoid" pos="{_f(*ABDOMEN_POS)}" size="{_f(*ABDOMEN)}" mass="{TORSO_MASS * ABDOMEN_SHARE:.6g}" class="belly"/>
       <geom name="waist" type="capsule" fromto="{_f(*WAIST[0], *WAIST[1])}" size="{WAIST_RADIUS}" mass="0" class="belly"/>{legs}
     </body>
   </worldbody>

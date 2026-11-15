@@ -29,8 +29,9 @@ learns, the control for "kept learning".
 
 Carried over from learning-spider (2026-11-15) with its founder genes. The brain lives on the
 CPU only: ``backend_of`` knows ``cpu`` and nothing else (this project's AGENTS.md). The senses
-here give 424 inputs (52 coded readings of 8 and 8 floor flags), not learning-spider's 152;
-the founder's ``modules`` and ``sensory_scale`` were chosen for 152 and are unmeasured on 424.
+here give 424 inputs (52 coded readings of 8 and 8 floor flags), 480 with the default compass,
+ground and up senses, not learning-spider's 152; the founder's ``modules`` and ``sensory_scale``
+were chosen for 152 and are unmeasured on 424 or 480.
 """
 
 from __future__ import annotations
@@ -138,10 +139,11 @@ FOUNDER: dict[str, Any] = {
                                     # brain; at 0.1 three seeds of three kept walking and learning over 150,000
                                     # moments (measured with entropy 0.1 and gamma 0.99); 0.2 since 2026-11-15
     },
-    # gamma 0.99, entropy 0.1 and need 0.2 became the founder's on 2026-11-15 without a nursery
-    # comparison against 0.95, 0 and 0.1: they are the genes the owner raised the live spring
-    # body's life with, taken over on that life's look, not on a measurement (an exception to
-    # AGENTS.md's rule, named as such in the README)
+    # gamma 0.99 and need 0.2 became the founder's on 2026-11-15 without a nursery comparison
+    # against 0.95 and 0.1: they are the genes the owner raised the live spring body's life with,
+    # taken over on that life's look, not on a measurement (an exception to AGENTS.md's rule,
+    # named as such in the README); entropy was 0.1 the same day and back to 0 on the owner's
+    # choice, also unmeasured
     # chosen here, unmeasured against the arena's values:
     "modules": [64, 32],            # the arena: [48, 24] on 32 inputs; learning-spider 152 coded inputs, here 424
     "recall": False,                # 0.97.1 composes a recall memory by default; off for cost
@@ -153,8 +155,8 @@ FOUNDER: dict[str, Any] = {
     "hold": None,                   # the actor's eligibility decay apart from the critic's: None is
                                     # gamma * lam (0.57 a moment), 0.9 a horizon of ten moments (a step),
                                     # 1 holds every act until an episode ends, which never comes here
-    "entropy": 0.1,                 # the policy's entropy in the actor's step; 0.1 is the docs' dose (0 until
-                                    # 2026-11-15, unmeasured change: above)
+    "entropy": 0.0,                 # the policy's entropy in the actor's step: off; 0.1 is the docs' dose
+                                    # (the founder's for part of 2026-11-15, unmeasured either way: above)
     "maturity": False,              # the slow use of plasticity that lowers the actor's step as it is spent
     "maturity_scale": 10.0,         # the use at which the step factor is 0.5 (with maturity only)
     "maturity_recovery": 200000,    # moments of the use's time constant (with maturity only)

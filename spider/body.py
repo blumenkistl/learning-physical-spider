@@ -58,6 +58,10 @@ class Spider:
         geom = mujoco.mjtObj.mjOBJ_GEOM
         self._floor = mujoco.mj_name2id(self.model, geom, "floor")
         self._feet = np.array([mujoco.mj_name2id(self.model, geom, f"{n}_foot") for n in LEG_NAMES])
+        self._head = mujoco.mj_name2id(self.model, geom, "head")
+        self._belly = {mujoco.mj_name2id(self.model, geom, n) for n in ("body", "waist", "abdomen")}
+        lo, hi = self.model.actuator_forcerange[:, 0].copy(), self.model.actuator_forcerange[:, 1].copy()
+        self._force_low, self._force_high = -lo, hi   # each muscle's most, either way (the lift raises with less)
         self._qpos = np.array([self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{n}_{j}")]
                                for n in LEG_NAMES for j in ("hip", "lift", "knee")])
         self._qvel = self._qpos - 1               # the free joint takes 7 positions and 6 velocities
@@ -106,6 +110,11 @@ class Spider:
         """The torso's up axis along the world's: 1 standing, 0 on its side, -1 on its back."""
         return float(self.data.xmat[1][8])
 
+    def up(self) -> np.ndarray:
+        """The world's up in the torso's own frame (forward, left, up): (0, 0, 1) standing,
+        (0, 1, 0) on the right side, (0, 0, -1) on the back. Continuous everywhere, unlike roll."""
+        return self.frame()[2].copy()
+
     def velocity(self) -> np.ndarray:
         """The torso's linear velocity in its own frame (forward, left, up), m/s."""
         return self.frame().T @ self.data.qvel[0:3]
@@ -133,20 +142,44 @@ class Spider:
                 out[hit] = True
         return out
 
+    def head_down(self) -> bool:
+        """Whether the head sphere touches the floor now (a reading: nothing pays or charges it)."""
+        for c in self.data.contact[: self.data.ncon]:
+            if {int(c.geom1), int(c.geom2)} == {self._floor, self._head}:
+                return True
+        return False
+
+    def belly_down(self) -> bool:
+        """Whether the prosoma, the waist or the abdomen touches the floor now (a reading: the body
+        lies on the floor instead of on its legs; the head is ``head_down``)."""
+        for c in self.data.contact[: self.data.ncon]:
+            pair = {int(c.geom1), int(c.geom2)}
+            if self._floor in pair and pair & self._belly:
+                return True
+        return False
+
     # --- one moment ---------------------------------------------------------------------------
 
     def step(self, commands) -> dict:
         """Apply twenty-four commands in ``{0: decrease, 1: hold, 2: increase}`` and run one moment
         of physics. Returns ``progress`` (metres along the heading held at the start of the
         moment), ``moved`` (the world displacement x, y), ``turn`` (radians of heading change),
-        ``stance`` (feet planted at both ends of the moment), ``upright`` and ``recentred``."""
+        ``stance`` (feet planted at both ends of the moment), ``upright``, ``head`` (the head on the
+        floor at the moment's end), ``belly`` (the prosoma, waist or abdomen on the floor at the
+        moment's end), ``effort`` (the muscles' torque as a share of each one's most in
+        the direction it pulls, over the twenty-four and the moment's steps: 0 slack, 1 every muscle
+        at full strength throughout) and ``recentred``."""
         cmd = np.asarray(commands).reshape(-1)
         if cmd.shape != (JOINTS,) or not np.all(np.isin(cmd, (0, 1, 2))):
             raise ValueError("commands must be twenty-four of 0, 1 or 2")
         ctrl = self.data.ctrl
         ctrl[:] = np.where(cmd == 0, LOW, np.where(cmd == 2, HIGH, ctrl))
         x0, y0, h0 = self.x, self.y, self.heading
-        mujoco.mj_step(self.model, self.data, nstep=SUBSTEPS)
+        effort = 0.0
+        for _ in range(SUBSTEPS):                 # the same steps as one call of nstep=SUBSTEPS, read as they go
+            mujoco.mj_step(self.model, self.data)
+            force = self.data.actuator_force
+            effort += float(np.where(force > 0, force / self._force_high, -force / self._force_low).mean())
         # mj_step leaves the derived quantities (frames, contacts) at the start of its last
         # substep; bring them to the state reached, as a restore does, so the senses read the
         # body that is there and a continued life reads what the uninterrupted one would
@@ -155,6 +188,8 @@ class Spider:
         planted = self.planted()
         stance = int((planted & self.planted_before).sum())
         self.planted_before = planted
+        head = self.head_down()                   # before a recentre, which moves the body but not its contacts
+        belly = self.belly_down()
         self.moments += 1
         recentred = math.hypot(self.x, self.y) > ARENA_RADIUS
         if recentred:
@@ -165,6 +200,9 @@ class Spider:
             "turn": _wrap(self.heading - h0),
             "stance": stance,
             "upright": self.upright,
+            "head": head,
+            "belly": belly,
+            "effort": effort / SUBSTEPS,
             "recentred": recentred,
         }
 
@@ -214,5 +252,7 @@ class Spider:
             "x": self.x, "y": self.y, "z": self.z, "heading": self.heading,
             "quat": d.qpos[3:7].round(5).tolist(), "legs": legs,
             "planted": [bool(p) for p in self.planted()],
+            "head": self.head_down(),
+            "belly": self.belly_down(),
             "joints": self.joints.reshape(-1).round(4).tolist(),
         }

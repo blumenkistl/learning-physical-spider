@@ -36,9 +36,15 @@ window on that one life.
   inverse kinematics, balance controller or smoothing. Joint ranges, collisions between legs,
   gravity and friction are the world's.
 - **The world supplies problems, never answers.** The reward is the torso's forward progress
-  along its own heading, capped, as in learning-spider. Being upright is not paid: a fallen
-  body earns nothing because it makes no progress, and that is the whole lesson. Shaping
-  terms keep learning-spider's rules (off by default, measured dose, labelled as shaping).
+  along its own heading, capped, as in learning-spider. Being upright is not paid by default: a
+  fallen body earns nothing because it makes no progress, and that is the whole lesson. The one
+  exception is `upright_pay`, a shaping hint that takes reward for the torso's tilt from level,
+  added on the owner's choice after a live body lay on its back for 239,000 moments; it is off
+  by default and its dose is measured in the README. `stand_pay` (given for standing: upright,
+  belly off the floor, the stance floor's feet down) and `carry` (forward paid only for a carried
+  body) were added on the owner's choice after bodies lay on their bellies with legs up; both
+  are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
+  (off by default, measured dose, labelled as shaping).
 - **Senses read the body, not the law.** Joint angles, setpoints, forward speed, yaw rate,
   roll and pitch through the population code, and one floor-contact flag per foot. A new sense
   is a birth option named in every reading.

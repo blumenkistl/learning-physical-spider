@@ -135,3 +135,37 @@ def test_a_restored_body_senses_what_the_running_one_does():
     twin = Spider.restore(spider.state_dict())
     assert np.array_equal(np.asarray(observe(spider)), np.asarray(observe(twin)))
     assert np.array_equal(spider.data.xmat, twin.data.xmat) and np.array_equal(spider.planted(), twin.planted())
+
+
+def test_the_head_on_the_floor_is_read():
+    """A standing body holds its head clear; one pitched nose down onto the floor reads it."""
+    import mujoco
+    spider = Spider()
+    for _ in range(20):
+        spider.step([1] * JOINTS)
+    assert spider.head_down() is False and spider.pose()["head"] is False
+    pitch = 0.6                                  # about the y axis: the nose goes down
+    spider.data.qpos[3:7] = [np.cos(pitch / 2), 0, np.sin(pitch / 2), 0]
+    spider.data.qpos[2] = 0.12
+    mujoco.mj_forward(spider.model, spider.data)
+    assert spider.head_down() is True
+    assert spider.step([1] * JOINTS)["head"] in (True, False)
+
+
+def test_effort_is_the_muscles_share_of_their_strength():
+    spider = Spider()
+    still = spider.step([1] * JOINTS)["effort"]
+    pushed = spider.step([2] * JOINTS)["effort"]                 # every setpoint to its far end: the servos pull hard
+    assert 0.0 <= still < pushed <= 1.0
+
+def test_the_belly_on_the_floor_is_read():
+    """A standing body holds its belly clear; one set down level onto the floor reads it."""
+    import mujoco
+    spider = Spider()
+    for _ in range(20):
+        spider.step([1] * JOINTS)
+    assert spider.belly_down() is False and spider.pose()["belly"] is False
+    spider.data.qpos[2] = 0.05                   # lower than the abdomen's half height: it touches
+    mujoco.mj_forward(spider.model, spider.data)
+    assert spider.belly_down() is True
+    assert spider.step([1] * JOINTS)["belly"] in (True, False)

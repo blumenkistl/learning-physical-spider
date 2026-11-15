@@ -42,12 +42,25 @@ async def test_the_real_page_and_its_libraries_are_served(client):
         assert (await client.get(path)).status == 200, path
 
 
+def test_the_page_knows_the_founder_entropy():
+    """The page leaves out a gene that is the founder's, so it must know the founder's value:
+    a 0 left out would be born with the founder's entropy instead."""
+    from spider.brain import FOUNDER
+    app = (STATIC / "app.js").read_text()
+    assert f"const FOUNDER_ENTROPY = {FOUNDER['entropy']};" in app
+
+
 def test_the_page_offers_the_law_this_life_has_and_no_other():
     page = (STATIC / "index.html").read_text()
     app = (STATIC / "app.js").read_text()
-    for key in LAW_KEYS:
+    # the high-water mark and its leak stay law settings for the nursery, but are not on the page
+    off_page = ("high_water", "old_ground")
+    shown = [k for k in LAW_KEYS if k not in off_page]
+    for key in shown:
         assert f'id="law-{key}"' in page
-    assert "const LAW_KEYS = [" + ", ".join(f"'{k}'" for k in LAW_KEYS) + "];" in app
+    for key in off_page:
+        assert f'id="law-{key}"' not in page
+    assert "const LAW_KEYS = [" + ", ".join(f"'{k}'" for k in shown) + "];" in app
     for gone in ("drift", "slope_pull", "muscle_rate", "arena", "birth-muscles", "birth-setpoints"):
         assert f'id="{gone}"' not in page and f'id="law-{gone}"' not in page, gone
 

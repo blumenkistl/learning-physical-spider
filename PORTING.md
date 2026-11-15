@@ -9,7 +9,7 @@ torch, and every brain uses the `cpu` backend.
 
 | learning-spider | here | change |
 | --- | --- | --- |
-| `spider/brain.py` | same | Imports `JOINTS, LEGS` from `spider.model` and `INPUTS` from the new senses (36 readings × `PER` + 8 flags). The layouts (`joint`, `leg`, `pair`), `joint_commands`, the controls (`random`, `frozen`), the connectome payload and the founder genes (gamma 0.99, entropy 0.1, arousal.need 0.2) stay as they are. Drop `backend="torch"` and the CUDA test. |
+| `spider/brain.py` | same | Imports `JOINTS, LEGS` from `spider.model` and `INPUTS` from the new senses (36 readings × `PER` + 8 flags). The layouts (`joint`, `leg`, `pair`), `joint_commands`, the controls (`random`, `frozen`), the connectome payload and the founder genes (gamma 0.99, arousal.need 0.2; entropy 0, the docs' 0.1 a gene) stay as they are. Drop `backend="torch"` and the CUDA test. |
 | `tests/test_brain.py` | same | Without the CUDA test. |
 | `static/vendor/brain_view.js` | same | Unchanged, as in learning-spider. |
 
@@ -44,7 +44,10 @@ What goes, because the physics now owns it:
 What stays as law: the reward (`pay`, `PROGRESS_PAY`, `PROGRESS_CAP`, `BACKWARD_PAY`),
 `STANCE_PAY`, `YAW_PAY`, `COURSE`, `STRICT`, `HIGH_WATER`, `OLD_GROUND`, `PROGRESS_WINDOW` and
 `set_law`. `STANCE_PAY` counts planted feet as before, but a planted foot is now a real floor
-contact.
+contact. `HIGH_WATER` and `OLD_GROUND` stay off and are not on the page: they were made against
+the kinematic body's sway, the leak ended below random there, and both are unmeasured on this
+body. The nursery's `--high-water` and `--old-ground` still set them, and a life born with them
+shows its mark on the law line.
 
 The sidecar format becomes `learning-physical-spider/1`. The world in it is `Spider.state_dict()`: the
 MuJoCo integration state, the model digest and the MuJoCo version. A save from another model

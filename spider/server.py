@@ -10,7 +10,7 @@ of the same meaning that sets its default: HOST (127.0.0.1), PORT (8080), POLICY
 SEED (0), PACE (20 moments/s), BACKEND (cpu, the only one), RUNS (runs), AUTOSAVE_MINUTES (5),
 the law's STANCE_PAY (0), YAW_PAY (0), PROGRESS_WINDOW (1), HIGH_WATER (0), OLD_GROUND (0),
 PAY_PER_METRE (40), BACKWARD_PAY (0), COURSE (off) and STRICT (0), and for a newborn LAYOUT
-(joint), COMPASS (0) and GROUND (0). There is one body (``MODEL_DIGEST``): no flag chooses
+(joint), COMPASS (1), GROUND (1) and UP (1). There is one body (``MODEL_DIGEST``): no flag chooses
 muscles, friction or support, the physics owns them. A saved life in RUNS is continued, with
 its own genes, seed, senses, layout and law; shutdown saves it. The page's settings change the
 law on the living brain (control ``law``) and name the next birth (control ``reset`` with a
