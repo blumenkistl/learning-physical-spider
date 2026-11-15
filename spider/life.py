@@ -73,6 +73,31 @@ STAND_PAY = 0.0         # given each moment the body stands: upright, the belly 
                         # shaping, not an outcome; off by default. Added on the owner's choice (2026-11-15) after
                         # live bodies lay on their bellies with legs up; a body may learn to stand still for it,
                         # so its dose stays well under the progress cap. Unmeasured; --stand-pay / STAND_PAY set it
+IDLE_LEG_PAY = 0.0      # taken per leg whose foot has been off the floor longer than IDLE_MOMENTS, while upright: a
+                        # leg held up for good is charged by name, whatever the other feet do (stance_pay counts
+                        # feet, so a body standing on four let one leg hang up for 100,000 moments, seen live
+                        # 2026-11-15). A step lifts a foot for a few moments and is not charged. Shaping, not an
+                        # outcome; off by default; added on the owner's choice; unmeasured; --idle-leg-pay
+IDLE_HEIGHT = 0.3       # m: a held-up leg's charge grows with its foot's height above the floor, in full from this
+                        # height, so every lowering is felt before the foot lands (a tilted body's rear foot hung
+                        # 0.15 m up with its leg all the way down, seen live 2026-11-15); 0 charges every held-up
+                        # leg in full, the law before, which a life saved before this setting keeps; --idle-height
+LOW_PAY = 0.0           # taken by how far the torso sits below its ride height, 0 at RIDE_HEIGHT and up, all of it
+                        # at LIE_HEIGHT and down: graded, so every centimetre the legs lift the body is felt on the
+                        # way from the belly to standing, where stand_pay pays only the whole stand (a live body
+                        # lay on its belly with its feet lowered beside it for 50,000 moments, 2026-11-15).
+                        # Shaping, not an outcome; off by default; added on the owner's choice; unmeasured; --low-pay
+HEAD_PAY = 0.0          # taken each moment the head sphere touches the floor: a body leaning on its nose stands on
+                        # its head and two or three feet and frees the other legs (seen live 2026-11-15: pitch
+                        # 0.25-0.33 rad nose down, head down in a quarter of the moments, 1.6 feet planted after
+                        # 240,000 moments). Shaping, not an outcome; off by default; added on the owner's choice;
+                        # unmeasured; --head-pay
+RIDE_HEIGHT = 0.10      # m, the torso centre's height standing: the newborn at every joint 0 settles at 0.101
+                        # (a reading on body eab70bddbcdbbdda)
+LIE_HEIGHT = 0.06       # m, the torso centre's height lying on the belly: the prosoma's half height (BODY[2]);
+                        # seen live at 0.060-0.061 on the belly
+IDLE_MOMENTS = 20       # moments a foot may stay off the floor before its leg counts as held up (one second at
+                        # DT 0.05); --idle-moments
 CARRY = False           # the progress term pays forward progress only while the belly is off the floor: a body
                         # pushed along on its belly earns nothing forward (backward is charged as ever). Not a hint
                         # on top: the same outcome, paid only for a carried body. Added on the owner's choice
@@ -116,7 +141,10 @@ def pay(progress: float, stance: int = STANCE_FLOOR, stance_pay: float = STANCE_
         turn: float = 0.0, yaw_pay: float = YAW_PAY, per_metre: float = PROGRESS_PAY,
         backward_pay: float = BACKWARD_PAY, upright: float = 1.0, upright_pay: float = UPRIGHT_PAY,
         effort: float = 0.0, torque_pay: float = TORQUE_PAY, stance_floor: int = STANCE_FLOOR,
-        belly: bool = False, stand_pay: float = STAND_PAY, carry: bool = CARRY) -> float:
+        belly: bool = False, stand_pay: float = STAND_PAY, carry: bool = CARRY,
+        idle_legs: float = 0.0, idle_leg_pay: float = IDLE_LEG_PAY,
+        low: float = 0.0, low_pay: float = LOW_PAY,
+        head: bool = False, head_pay: float = HEAD_PAY) -> float:
     """Forward progress pays; backward and standing still pay zero (``backward_pay`` charges
     backward progress that share of the forward pay, under the same cap); every foot short of
     ``stance_floor`` (``STANCE_FLOOR`` unless the law says more) planted through the moment takes ``stance_pay``, and every radian turned
@@ -124,7 +152,10 @@ def pay(progress: float, stance: int = STANCE_FLOOR, stance_pay: float = STANCE_
     (``upright``, -1 to 1) takes ``upright_pay``, and the moment's ``effort`` (0 to 1) takes
     ``torque_pay``. A moment that stands (``upright`` above ``UPRIGHT``, the ``belly`` off the floor and
     at least ``stance_floor`` planted) is given ``stand_pay``; under ``carry`` forward progress
-    with the belly down pays nothing. The progress term is the outcome. The stance, yaw, upright and torque terms are hints the world gives about posture and course (reward shaping): the stance term was
+    with the belly down pays nothing; ``idle_legs`` (the legs held up past the law's idle
+    moments, each weighed by its foot's height, summed by the life) takes ``idle_leg_pay``; ``low`` (0 at
+    the ride height, 1 lying on the belly, ``low_share``) takes ``low_pay``; a moment with the ``head``
+    on the floor takes ``head_pay``. The progress term is the outcome. The stance, yaw, upright and torque terms are hints the world gives about posture and course (reward shaping): the stance term was
     chosen after the learner under progress alone walked on ever fewer feet, the yaw term
     because progress along the body's own heading pays a circle as well as a line (README,
     "Measure it"). The first law paid backward progress negatively, and over 30,000 moments the
@@ -138,8 +169,17 @@ def pay(progress: float, stance: int = STANCE_FLOOR, stance_pay: float = STANCE_
     yaw_term = yaw_pay * abs(float(turn))
     upright_term = upright_pay * (1.0 - float(np.clip(upright, -1.0, 1.0)))
     torque_term = torque_pay * float(np.clip(effort, 0.0, 1.0))
-    return float(np.clip(progress_term + stand_term - stance_term - yaw_term - upright_term - torque_term,
+    idle_term = idle_leg_pay * float(idle_legs)
+    low_term = low_pay * float(np.clip(low, 0.0, 1.0))
+    head_term = head_pay if head else 0.0
+    return float(np.clip(progress_term + stand_term - idle_term - low_term - head_term - stance_term - yaw_term - upright_term - torque_term,
                          -PROGRESS_CAP, PROGRESS_CAP))
+
+
+def low_share(z: float) -> float:
+    """How far the torso centre at height ``z`` sits below the ride height: 0 at ``RIDE_HEIGHT`` and
+    up, 1 at ``LIE_HEIGHT`` and down, straight between."""
+    return float(np.clip((RIDE_HEIGHT - float(z)) / (RIDE_HEIGHT - LIE_HEIGHT), 0.0, 1.0))
 
 
 def _replace(path: Path, write) -> None:
@@ -156,7 +196,8 @@ def _replace(path: Path, write) -> None:
 
 
 LAW_KEYS = ("stance_pay", "yaw_pay", "window", "high_water", "old_ground", "pay_per_metre", "backward_pay", "course",
-            "strict", "upright_pay", "stance_upright", "torque_pay", "stance_floor", "stand_pay", "carry")
+            "strict", "upright_pay", "stance_upright", "torque_pay", "stance_floor", "stand_pay", "carry", "idle_leg_pay", "idle_moments", "idle_height",
+            "low_pay", "head_pay")
 
 
 def checked_course(course: Any) -> float | None:
@@ -184,8 +225,10 @@ def checked_law(*, stance_pay: Any = STANCE_PAY, yaw_pay: Any = YAW_PAY, window:
                 strict: Any = STRICT, upright_pay: Any = UPRIGHT_PAY,
                 stance_upright: Any = STANCE_UPRIGHT, torque_pay: Any = TORQUE_PAY,
                 stance_floor: Any = STANCE_FLOOR, stand_pay: Any = STAND_PAY,
-                carry: Any = CARRY) -> dict[str, Any]:
-    """The law's fifteen settings, typed and checked; a ValueError names what is wrong."""
+                carry: Any = CARRY, idle_leg_pay: Any = IDLE_LEG_PAY,
+                idle_moments: Any = IDLE_MOMENTS, idle_height: Any = IDLE_HEIGHT,
+                low_pay: Any = LOW_PAY, head_pay: Any = HEAD_PAY) -> dict[str, Any]:
+    """The law's twenty settings, typed and checked; a ValueError names what is wrong."""
     high_water = bool(high_water)
     if not 0.0 <= float(old_ground) <= 1.0:
         raise ValueError(f"old ground is a share of the pay, 0 to 1, not {old_ground}")
@@ -201,6 +244,16 @@ def checked_law(*, stance_pay: Any = STANCE_PAY, yaw_pay: Any = YAW_PAY, window:
         raise ValueError(f"torque pay is taken, not given: 0 or more, not {torque_pay}")
     if not 0.0 <= float(stand_pay) <= PROGRESS_CAP:
         raise ValueError(f"stand pay is given per moment, 0 to {PROGRESS_CAP}, not {stand_pay}")
+    if float(idle_leg_pay) < 0:
+        raise ValueError(f"idle leg pay is taken, not given: 0 or more, not {idle_leg_pay}")
+    if not 0.0 <= float(head_pay) <= PROGRESS_CAP:
+        raise ValueError(f"head pay is taken, not given: 0 to {PROGRESS_CAP}, not {head_pay}")
+    if not 0.0 <= float(low_pay) < math.inf:
+        raise ValueError(f"low pay is taken, not given: 0 or more, not {low_pay}")
+    if not 0.0 <= float(idle_height) < math.inf:
+        raise ValueError(f"idle height is metres, 0 or more, not {idle_height}")
+    if float(idle_moments) != int(float(idle_moments)) or int(float(idle_moments)) < 1:
+        raise ValueError(f"idle moments is a whole number of moments, 1 or more, not {idle_moments}")
     if float(stance_floor) != int(float(stance_floor)) or not 1 <= int(float(stance_floor)) <= LEGS:
         raise ValueError(f"the stance floor is a number of feet, 1 to {LEGS}, not {stance_floor}")
     if int(window) < 1:
@@ -214,7 +267,10 @@ def checked_law(*, stance_pay: Any = STANCE_PAY, yaw_pay: Any = YAW_PAY, window:
             "pay_per_metre": float(pay_per_metre), "backward_pay": float(backward_pay),
             "course": course, "strict": strict, "upright_pay": float(upright_pay),
             "stance_upright": bool(stance_upright), "torque_pay": float(torque_pay),
-            "stance_floor": int(float(stance_floor)), "stand_pay": float(stand_pay), "carry": bool(carry)}
+            "stance_floor": int(float(stance_floor)), "stand_pay": float(stand_pay), "carry": bool(carry),
+            "idle_leg_pay": float(idle_leg_pay), "idle_moments": int(float(idle_moments)),
+            "idle_height": float(idle_height), "low_pay": float(low_pay),
+            "head_pay": float(head_pay)}
 
 
 def law_text(law: dict[str, Any]) -> str:
@@ -236,6 +292,15 @@ def law_text(law: dict[str, Any]) -> str:
         parts.append(f"stand {law['stand_pay']:g}")
     if law.get("carry"):
         parts.append("carried")
+    if law.get("idle_leg_pay"):
+        parts.append(f"idle leg {law['idle_leg_pay']:g}"
+                     + (f" after {law['idle_moments']}" if law.get("idle_moments", IDLE_MOMENTS) != IDLE_MOMENTS else "")
+                     + (" (flat)" if not law.get("idle_height", IDLE_HEIGHT) else
+                        f" to {law['idle_height']:g} m" if law["idle_height"] != IDLE_HEIGHT else ""))
+    if law.get("head_pay"):
+        parts.append(f"head {law['head_pay']:g}")
+    if law.get("low_pay"):
+        parts.append(f"low {law['low_pay']:g}")
     if law.get("upright_pay"):
         parts.append(f"upright {law['upright_pay']:g}")
     if law.get("torque_pay"):
@@ -275,13 +340,21 @@ class Life:
         stance_floor: int = STANCE_FLOOR,
         stand_pay: float = STAND_PAY,
         carry: bool = CARRY,
+        idle_leg_pay: float = IDLE_LEG_PAY,
+        idle_moments: int = IDLE_MOMENTS,
+        idle_height: float = IDLE_HEIGHT,
+        low_pay: float = LOW_PAY,
+        head_pay: float = HEAD_PAY,
     ) -> None:
         self.name = name                        # the file stem under runs/
         self._take_law(checked_law(stance_pay=stance_pay, yaw_pay=yaw_pay, window=window, high_water=high_water,
                                    old_ground=old_ground, pay_per_metre=pay_per_metre, backward_pay=backward_pay,
                                    course=course, strict=strict, upright_pay=upright_pay,
                                    stance_upright=stance_upright, torque_pay=torque_pay,
-                                   stance_floor=stance_floor, stand_pay=stand_pay, carry=carry))
+                                   stance_floor=stance_floor, stand_pay=stand_pay, carry=carry,
+                                   idle_leg_pay=idle_leg_pay, idle_moments=idle_moments,
+                                   idle_height=idle_height, low_pay=low_pay,
+                                   head_pay=head_pay))
         self.mark = 0.0                         # the farthest paid distance reached: the high-water mark
         self.law_changes: list[dict[str, Any]] = []   # every live change of the law, moment and law (a schedule)
         self.seed = int(seed)
@@ -306,6 +379,7 @@ class Life:
         self.upright_moments = 0                # moments that ended with the torso upright (a reading, not paid)
         self.falls = 0                          # times the torso went from upright to not
         self._fallen_reset()
+        self.aloft = [0] * LEGS                 # per leg, moments since its foot was last on the floor at a moment's end
         # the body's place in the world's frame from the point of birth, as the sum of every
         # moment's motion over the ground: a recentre moves the body, not this (the body's x, y
         # are reset at the arena's edge); its length is the honest answer to "how far did it get"
@@ -342,6 +416,11 @@ class Life:
         self.stance_floor = law["stance_floor"] # feet the stance hint wants down: STANCE_FLOOR unless the law says more
         self.stand_pay = law["stand_pay"]       # 0 switches the standing hint off
         self.carry = law["carry"]               # forward pays only with the belly off the floor
+        self.idle_leg_pay = law["idle_leg_pay"] # 0 switches the held-up-leg hint off
+        self.idle_moments = law["idle_moments"] # moments aloft before a leg counts as held up
+        self.idle_height = law["idle_height"]   # m: a held-up foot this high is charged in full; 0 every one in full
+        self.head_pay = law["head_pay"]       # 0 switches the nose-down hint off
+        self.low_pay = law["low_pay"]         # 0 switches the ride-height hint off
         self.window = law["window"]
         kept = list(getattr(self, "_progress", []))[-self.window:]
         self._progress: deque[float] = deque(kept, maxlen=self.window)   # the last window moments' progress
@@ -349,13 +428,16 @@ class Life:
         self._nose: deque[float] = deque(nose, maxlen=self.window)   # the same moments' progress along the nose (the strict course)
 
     def law(self) -> dict[str, Any]:
-        """The reward law this life is paid under, the fifteen settings the flags set."""
+        """The reward law this life is paid under, the twenty settings the flags set."""
         return {"stance_pay": self.stance_pay, "yaw_pay": self.yaw_pay, "window": self.window,
                 "high_water": self.high_water, "old_ground": self.old_ground,
                 "pay_per_metre": self.pay_per_metre, "backward_pay": self.backward_pay, "course": self.course,
                 "strict": self.strict, "upright_pay": self.upright_pay, "stance_upright": self.stance_upright,
                 "torque_pay": self.torque_pay, "stance_floor": self.stance_floor,
-                "stand_pay": self.stand_pay, "carry": self.carry}
+                "stand_pay": self.stand_pay, "carry": self.carry,
+                "idle_leg_pay": self.idle_leg_pay, "idle_moments": self.idle_moments,
+                "idle_height": self.idle_height, "low_pay": self.low_pay,
+                "head_pay": self.head_pay}
 
     def _paid_distance(self) -> float:
         """The distance the progress term is measured on: along the course under the course law,
@@ -432,11 +514,20 @@ class Life:
                 # are positive over the stride (seen on the page's life, 2026-11-14); the window is the
                 # stride's, and with window 1 the two orders are the same
                 paid = min(paid, sum(self._nose) / self.window)
+            self.aloft = [0 if down else n + 1 for n, down in zip(self.aloft, self.body.planted_before)]
+            held = [n > self.idle_moments for n in self.aloft] if upright else [False] * LEGS   # legs up on the back are no habit
+            self.idle_leg_moments += sum(held)
+            if self.idle_height:                  # each held-up leg weighed by its foot's height: every lowering is felt
+                weight = np.minimum(self.body.foot_heights() / self.idle_height, 1.0)
+                idle = float(sum(w for w, h in zip(weight, held) if h))
+            else:
+                idle = float(sum(held))
             stance = outcome["stance"] if upright or not self.stance_upright else 0   # feet against the floor on the back stand on nothing
             self.reward = pay(paid, stance, self.stance_pay, outcome["turn"], self.yaw_pay, self.pay_per_metre,
                               self.backward_pay, outcome["upright"], self.upright_pay,
                               outcome["effort"], self.torque_pay, self.stance_floor,
-                              outcome["belly"], self.stand_pay, self.carry)
+                              outcome["belly"], self.stand_pay, self.carry, idle, self.idle_leg_pay,
+                              low_share(self.body.z), self.low_pay, outcome["head"], self.head_pay)
             self._count_fallen(outcome["upright"], was_upright, upright, outcome["progress"])
             self.head_moments += outcome["head"]
             self.head_upright_moments += outcome["head"] and upright
@@ -466,7 +557,7 @@ class Life:
 
     FALL_KEYS = ("rightings", "righted_after", "back_moments", "fallen_forward_m", "fallen_reward", "longest_fall", "fallen_for",
                  "head_moments", "head_upright_moments", "effort_sum", "pitch_upright_sum", "head_pitch_sum",
-                 "height_upright_sum", "belly_moments", "belly_upright_moments")
+                 "height_upright_sum", "belly_moments", "belly_upright_moments", "idle_leg_moments")
 
     def _fallen_reset(self) -> None:
         self.rightings = 0                      # times the torso came back from not upright to upright, by its own legs
@@ -484,6 +575,7 @@ class Life:
         self.height_upright_sum = 0.0           # the torso's height (m) at the end of every upright moment, summed
         self.belly_moments = 0                  # moments that ended with the prosoma, waist or abdomen on the floor
         self.belly_upright_moments = 0          # of them, the upright ones: a body lying on its belly, legs or no legs
+        self.idle_leg_moments = 0               # legs held up past the idle moments while upright, summed over moments
 
     def _count_fallen(self, upright_value: float, was_upright: bool, upright: bool, progress: float) -> None:
         if upright:
@@ -737,6 +829,7 @@ class Life:
                 "world": self.body.state_dict(),
                 "progress_window": list(self._progress),
                 "nose_window": list(self._nose),
+                "aloft": list(self.aloft),
                 "blocks": list(self.blocks),
                 "saved_at": time.time(),
             }
@@ -787,7 +880,8 @@ class Life:
                 self.mark = float(state["mark"])
                 # the law is the life's: a life saved under one law continues under it, whatever the flags say
                 # a life saved before the stance needed an upright torso was paid with every foot counted
-                saved = checked_law(**{"stance_upright": False, **state["law"]})
+                # one saved before the idle height charged every held-up leg in full
+                saved = checked_law(**{"stance_upright": False, "idle_height": 0.0, **state["law"]})
                 if saved != self.law():
                     self.notes.append(f"saved under the law {law_text(saved)}, asked for {law_text(self.law())}: the saved life keeps its own")
                     self._take_law(saved)
@@ -808,6 +902,7 @@ class Life:
                 self._progress = deque([float(v) for v in state["progress_window"]][-self.window:], maxlen=self.window)
                 self._nose = deque([float(v) for v in state["nose_window"]][-self.window:], maxlen=self.window)
                 self.blocks = deque(state["blocks"], maxlen=BLOCKS_KEPT)
+                self.aloft = [int(n) for n in state.get("aloft", [0] * LEGS)]   # saved before the count: from zero
                 if state.get("cadence") != CADENCE_VERSION:
                     self.notes.append(f"saved with cadence {state.get('cadence')}, running {CADENCE_VERSION}")
                 custody = "kept"
@@ -816,6 +911,7 @@ class Life:
                 # observed zero at the next moment, which is a break in custody, reported
                 self.reward = None
                 self.body = Spider()
+                self.aloft = [0] * LEGS
                 custody = "broken: no sidecar, the pending outcome is lost"
                 self.notes.append(custody)
             self._block = []
@@ -872,6 +968,7 @@ class Life:
             self.upright_moments = 0
             self.falls = 0
             self._fallen_reset()
+            self.aloft = [0] * LEGS
             self.displacement = [0.0, 0.0]
             self.recentres = 0
             self.switches = 0

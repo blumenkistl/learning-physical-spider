@@ -28,7 +28,7 @@ import mujoco
 import numpy as np
 
 from .model import (DT, HIP_RANGE, JOINTS, KNEE_RANGE, LIFT_RANGE, LEG_NAMES, LEGS, MODEL_DIGEST, MODEL_XML,
-                    TIMESTEP)
+                    TIMESTEP, FOOT_RADIUS)
 
 SUBSTEPS = round(DT / TIMESTEP)
 ARENA_RADIUS = 5.0
@@ -141,6 +141,10 @@ class Spider:
                 hit = np.flatnonzero(np.isin(self._feet, list(pair)))
                 out[hit] = True
         return out
+
+    def foot_heights(self) -> np.ndarray:
+        """Each foot's height above the floor now, metres (0 when it rests on it)."""
+        return np.maximum(self.data.geom_xpos[self._feet, 2] - FOOT_RADIUS, 0.0)
 
     def head_down(self) -> bool:
         """Whether the head sphere touches the floor now (a reading: nothing pays or charges it)."""

@@ -28,9 +28,9 @@ from typing import Any
 from .brain import DEFAULT_LAYOUT, LAYOUTS
 from .brain import genes_from, parse_gene  # noqa: F401  (the server imports them from here too)
 from .life import (BACKWARD_PAY, BLOCK, COURSE, HIGH_WATER, OLD_GROUND, PROGRESS_PAY, PROGRESS_WINDOW, STANCE_PAY,
-                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY,
+                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, HEAD_PAY,
                    STRICT, UPRIGHT, YAW_PAY, Life, checked_course)
-from .model import MODEL_DIGEST
+from .model import LEGS, MODEL_DIGEST
 from .senses import DEFAULT as DEFAULT_SENSES, PER, Senses
 
 
@@ -59,6 +59,21 @@ def law_arguments(parser: argparse.ArgumentParser, default=lambda name, value: v
                              f"floor and at least the stance floor's feet planted (default {STAND_PAY}; 0 = off)")
     parser.add_argument("--carry", action=argparse.BooleanOptionalAction, default=default("CARRY", CARRY),
                         help="pay forward progress only while the belly is off the floor (default off)")
+    parser.add_argument("--idle-leg-pay", type=float, default=float(default("IDLE_LEG_PAY", IDLE_LEG_PAY)),
+                        help=f"shaping: reward taken per leg whose foot has been off the floor longer than the idle "
+                             f"moments, while upright (default {IDLE_LEG_PAY}; 0 = off)")
+    parser.add_argument("--idle-moments", type=int, default=int(default("IDLE_MOMENTS", IDLE_MOMENTS)),
+                        help=f"moments a foot may stay off the floor before its leg counts as held up "
+                             f"(default {IDLE_MOMENTS})")
+    parser.add_argument("--idle-height", type=float, default=float(default("IDLE_HEIGHT", IDLE_HEIGHT)),
+                        help=f"metres: a held-up leg's charge grows with its foot's height, in full from this "
+                             f"height (default {IDLE_HEIGHT}; 0 charges every held-up leg in full)")
+    parser.add_argument("--low-pay", type=float, default=float(default("LOW_PAY", LOW_PAY)),
+                        help=f"shaping: reward taken by how far the torso sits below its ride height (0 standing, "
+                             f"all of it lying on the belly; default {LOW_PAY}; 0 = off)")
+    parser.add_argument("--head-pay", type=float, default=float(default("HEAD_PAY", HEAD_PAY)),
+                        help=f"shaping: reward taken each moment the head touches the floor "
+                             f"(default {HEAD_PAY}; 0 = off)")
     parser.add_argument("--torque-pay", type=float, default=float(default("TORQUE_PAY", TORQUE_PAY)),
                         help=f"shaping: reward taken per unit of the moment's effort, the muscles' torque as a share "
                              f"of each one's most (0 slack, 1 all at full strength; default {TORQUE_PAY}; 0 = off)")
@@ -115,6 +130,9 @@ def life_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         course=args.course, strict=args.strict, layout=args.layout,
         upright_pay=args.upright_pay, stance_upright=args.stance_upright, torque_pay=args.torque_pay,
         stance_floor=args.stance_floor, stand_pay=args.stand_pay, carry=args.carry,
+        idle_leg_pay=args.idle_leg_pay, idle_moments=args.idle_moments,
+        idle_height=args.idle_height, low_pay=args.low_pay,
+        head_pay=args.head_pay,
     )
 
 
@@ -136,12 +154,15 @@ def fallen_readings(life: Life, before: dict[str, Any], counted: int, upright: i
         "mean_effort": round((now["effort_sum"] - before["effort_sum"]) / counted, 4) if counted else None,
         "head_upright_share": round((now["head_upright_moments"] - before["head_upright_moments"]) / upright, 3)
                               if upright else None,
-        # the torso's pitch (rad, + nose down) and height at the end of the upright moments, and the
-        # pitch of those with the head down: steep is a headstand, near level a nose dragged
         # the prosoma, waist or abdomen on the floor at a moment's end: a body lying on its belly
         "belly_share": round((now["belly_moments"] - before["belly_moments"]) / counted, 3) if counted else None,
         "belly_upright_share": round((now["belly_upright_moments"] - before["belly_upright_moments"]) / upright, 3)
                                if upright else None,
+        # the share of an upright moment's legs held up past the idle moments: a leg parked aloft
+        "idle_leg_share": round((now["idle_leg_moments"] - before["idle_leg_moments"]) / (upright * LEGS), 3)
+                          if upright else None,
+        # the torso's pitch (rad, + nose down) and height at the end of the upright moments, and the
+        # pitch of those with the head down: steep is a headstand, near level a nose dragged
         "upright_pitch": round((now["pitch_upright_sum"] - before["pitch_upright_sum"]) / upright, 3) if upright else None,
         "upright_height": round((now["height_upright_sum"] - before["height_upright_sum"]) / upright, 3) if upright else None,
         "head_pitch": round((now["head_pitch_sum"] - before["head_pitch_sum"])

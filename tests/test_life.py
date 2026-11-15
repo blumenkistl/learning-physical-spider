@@ -1,9 +1,10 @@
 import json
 import math
 
+import numpy as np
 import pytest
 
-from spider.model import JOINTS
+from spider.model import JOINTS, LEGS
 from spider.brain import SpiderBrain
 from spider.life import law_text, BLOCK, PROGRESS_PAY, UPRIGHT, Life, pay
 from spider.senses import Senses
@@ -934,3 +935,67 @@ def test_standing_is_given_the_stand_pay_and_the_carry_law_pays_only_a_carried_b
     assert again.stand_pay == 0.03 and again.carry is True
     life.set_law({"stand_pay": 0.0, "carry": False})   # changed on the living brain, like every setting
     assert life.stand_pay == 0.0 and life.carry is False
+
+
+def test_a_leg_held_up_is_charged_by_name_and_counted(tmp_path):
+    assert pay(0.0, idle_legs=1, idle_leg_pay=0.02) == pytest.approx(-0.02)
+    assert pay(0.0, idle_legs=8, idle_leg_pay=0.02) == pytest.approx(-0.16)
+    assert pay(0.0, idle_legs=3) == 0.0                                          # off by default
+    for wrong in ({"idle_leg_pay": -0.1}, {"idle_moments": 0}, {"idle_moments": 2.5}):
+        with pytest.raises(ValueError):
+            Life("random", seed=0, pace=0, runs="/nonexistent", **wrong)
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", idle_leg_pay=0.02, idle_moments=3)
+    assert "idle leg 0.02 after 3" in law_text(life.law())
+    for _ in range(10):
+        life.tick()
+    planted = life.body.planted_before
+    assert all((n == 0) == bool(p) for n, p in zip(life.aloft, planted))         # a foot down at the end counts from zero
+    assert life.idle_leg_moments >= 0
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    again.load()                                     # the count of moments aloft continues with the life
+    assert again.aloft == life.aloft and again.idle_moments == 3 and again.idle_leg_pay == 0.02
+    assert again.idle_leg_moments == life.idle_leg_moments
+
+
+def test_a_held_up_leg_is_charged_by_its_foots_height():
+    life = Life("random", seed=0, pace=0.0, runs="/nonexistent", idle_leg_pay=0.1, idle_moments=1, idle_height=0.3)
+    heights = life.body.foot_heights()
+    assert heights.shape == (LEGS,) and (heights >= 0).all()
+    for _ in range(5):
+        life.tick()
+    held = [n > 1 for n in life.aloft] if life.body.upright > UPRIGHT else [False] * LEGS
+    weight = np.minimum(life.body.foot_heights() / 0.3, 1.0)
+    charged = 0.1 * sum(w for w, h in zip(weight, held) if h)
+    flat = Life("random", seed=0, pace=0.0, runs="/nonexistent", idle_leg_pay=0.1, idle_moments=1, idle_height=0)
+    assert "(flat)" in law_text(flat.law()) and "idle leg 0.1 after 1" in law_text(life.law())
+    assert charged <= 0.1 * sum(held) + 1e-12                                  # the weighed charge is never more than flat
+    with pytest.raises(ValueError):
+        Life("random", seed=0, pace=0, runs="/nonexistent", idle_height=-0.1)
+
+
+def test_a_low_torso_is_charged_by_its_height_below_the_ride():
+    from spider.life import LIE_HEIGHT, RIDE_HEIGHT, low_share, pay
+    assert low_share(RIDE_HEIGHT) == 0.0 and low_share(0.2) == 0.0
+    assert low_share(LIE_HEIGHT) == 1.0 and low_share(0.0) == 1.0
+    assert low_share((RIDE_HEIGHT + LIE_HEIGHT) / 2) == pytest.approx(0.5)
+    assert pay(0.0, low=1.0, low_pay=0.1) == pytest.approx(-0.1)
+    assert pay(0.0, low=0.5, low_pay=0.1) == pytest.approx(-0.05)
+    assert pay(0.0, low=1.0) == 0.0                                            # off by default
+    life = Life("random", seed=0, pace=0.0, runs="/nonexistent", low_pay=0.1)
+    assert life.law()["low_pay"] == 0.1 and "low 0.1" in law_text(life.law())
+    life.tick()
+    with pytest.raises(ValueError):
+        Life("random", seed=0, pace=0, runs="/nonexistent", low_pay=-0.1)
+
+
+def test_a_head_on_the_floor_is_charged():
+    from spider.life import pay
+    assert pay(0.0, head=True, head_pay=0.04) == pytest.approx(-0.04)
+    assert pay(0.0, head=False, head_pay=0.04) == 0.0
+    assert pay(0.0, head=True) == 0.0                                          # off by default
+    life = Life("random", seed=0, pace=0.0, runs="/nonexistent", head_pay=0.04)
+    assert life.law()["head_pay"] == 0.04 and "head 0.04" in law_text(life.law())
+    life.tick()
+    with pytest.raises(ValueError):
+        Life("random", seed=0, pace=0, runs="/nonexistent", head_pay=-0.1)

@@ -42,8 +42,11 @@ window on that one life.
   added on the owner's choice after a live body lay on its back for 239,000 moments; it is off
   by default and its dose is measured in the README. `stand_pay` (given for standing: upright,
   belly off the floor, the stance floor's feet down) and `carry` (forward paid only for a carried
-  body) were added on the owner's choice after bodies lay on their bellies with legs up; both
-  are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
+  body) were added on the owner's choice after bodies lay on their bellies with legs up, and
+  `idle_leg_pay` (taken per leg whose foot stays off the floor past `idle_moments`, weighed by
+  the foot's height up to `idle_height`) after a leg hung up for good, and `low_pay` (taken by
+  how far the torso sits below its ride height) after a body lay on its belly with its legs lowered,
+  and `head_pay` (taken while the head touches the floor) after a body leant on its nose; all are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
   (off by default, measured dose, labelled as shaping).
 - **Senses read the body, not the law.** Joint angles, setpoints, forward speed, yaw rate,
   roll and pitch through the population code, and one floor-contact flag per foot. A new sense

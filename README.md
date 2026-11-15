@@ -28,7 +28,8 @@ moments that ended with the head on the floor, overall and among the upright one
 over the upright moments (`upright_pitch`, `upright_height`) and the pitch of those with the
 head down (`head_pitch`: steep is a headstand, near level a nose dragged), and the share of
 moments with the belly (body, waist or abdomen) on the floor, overall and among the upright ones
-(`belly_share`, `belly_upright_share`). None of them is paid; they
+(`belly_share`, `belly_upright_share`), and the share of an upright moment's legs held up past
+the idle moments (`idle_leg_share`, the count `idle_leg_pay` charges). None of them is paid; they
 say whether a fall is a problem the world poses or a place the body can live in.
 
 ## Why a physics engine
@@ -168,7 +169,7 @@ saved before the option continues without it.
 ## The reward (`spider/life.py`)
 
 Progress along the body's own heading pays, 40 a metre, capped at ±0.5 a moment; backward and
-standing still pay zero. Five hints can be switched on, each shaping, not an outcome, and
+standing still pay zero. Eight hints can be switched on, each shaping, not an outcome, and
 each off in the shipped law, and one setting of the outcome (`carry`):
 
 - `stance_pay`: taken per foot short of four on the floor through the moment. Under
@@ -202,6 +203,32 @@ each off in the shipped law, and one setting of the outcome (`carry`):
   stand and never walk, and the dose has to stay well under what walking earns (0.5 a moment at
   most). Added on the owner's choice (2026-11-15) after live bodies lay on their bellies with
   their legs up and the stance floor did not lift them (the reading above). Unmeasured.
+- `idle_leg_pay` (`--idle-leg-pay`, `--idle-moments`, the page's law panel): taken per leg whose
+  foot has been off the floor longer than `idle_moments` (20, one second), while upright. The life
+  counts each foot's moments aloft at the moments' ends (saved with the life). `stance_pay` counts
+  feet, so a live body on four or more let its front right leg hang up over the vertical for over
+  100,000 moments (2026-11-15) at no cost; this hint charges the leg itself. A step lifts a foot
+  for a few moments and is not charged. Added on the owner's choice. Unmeasured. Each held-up
+  leg is weighed by its foot's height above the floor, in full from `idle_height` (`--idle-height`,
+  0.3 m), so lowering a leg is felt before its foot lands: a body tipped onto its nose held a rear
+  foot 0.15 m up with the leg all the way down, and a charge for contact alone did not change
+  until it touched. `idle_height` 0 charges every held-up leg in full, the law before, which a
+  life saved before the setting keeps. Mind the cap: at 0.1 a live body on five held-up legs and
+  two feet short sat at −0.5 whatever it did (2026-11-15), so no leg set down was felt; eight
+  times the dose with the stance charge should stay under 0.5.
+- `low_pay` (`--low-pay`, the page's law panel, "low"): taken by how far the torso centre sits
+  below its ride height: nothing at 0.10 m and up, all of it at 0.06 m and down, straight between.
+  0.10 m is where the newborn settles with every joint at 0 (0.101 m on body `eab70bddbcdbbdda`);
+  0.06 m is the prosoma's half height, where a live body lay on its belly (0.060–0.061 m). A live
+  body (seed 1, entropy 0.1) learned to lower its legs under `idle_leg_pay` and then lay on its
+  belly with its feet beside it for 50,000 moments (2026-11-15): `stand_pay` pays only the whole
+  stand, four feet down and the belly off, and nothing on the way. This hint makes every
+  centimetre the legs lift the body felt. Added on the owner's choice. Unmeasured.
+- `head_pay` (`--head-pay`, the page's law panel, "head"): taken each moment the head sphere
+  touches the floor. A live body (seed 0, entropy 0.03) learned to lift its belly under
+  `low_pay` and then leant on its nose, pitched 0.25–0.33 rad down with the head on the floor in
+  a quarter of the moments, standing on the head and 1.6 feet with the rest free (2026-11-15,
+  240,000 moments). Added on the owner's choice. Unmeasured.
 - `carry` (`--carry`, the page's law panel, "carried"): forward progress pays only while the belly
   is off the floor, so a body pushed along on its belly earns nothing forward; backward is
   charged as ever. Not a hint on top but the outcome paid only for a carried body. Added with

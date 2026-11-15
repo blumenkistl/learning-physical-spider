@@ -515,7 +515,7 @@ function describedBy(d) {
 // high_water and old_ground stay law settings (the nursery's --high-water and --old-ground) but are
 // not on the page: unmeasured on this body and off; a life born with them still shows its mark.
 const FOUNDER_ENTROPY = 0.0;   // spider/brain.py's founder gene (tests/test_server.py holds them equal)
-const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry'];
+const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry', 'idle_leg_pay', 'idle_moments', 'idle_height', 'low_pay', 'head_pay'];
 // The nursery's words for a brain's gene overrides: {gamma: 0.99, arousal: {need: 0}} → "gamma=0.99 arousal.need=0".
 function geneWords(genes, prefix = '') {
   return Object.entries(genes || {}).map(([k, v]) =>
@@ -540,6 +540,9 @@ function law(m) {
   if (r.stance_pay) parts.push(`stance ${r.stance_pay}${r.stance_floor && r.stance_floor !== 4 ? ' of ' + r.stance_floor : ''}${r.stance_upright === false ? ' (any foot)' : ''}`);
   if (r.stand_pay) parts.push(`stand ${r.stand_pay}`);
   if (r.carry) parts.push('carried');
+  if (r.low_pay) parts.push(`low ${r.low_pay}`);
+  if (r.head_pay) parts.push(`head ${r.head_pay}`);
+  if (r.idle_leg_pay) parts.push(`idle leg ${r.idle_leg_pay}${r.idle_moments && r.idle_moments !== 20 ? ' after ' + r.idle_moments : ''}`);
   if (r.upright_pay) parts.push(`upright ${r.upright_pay}`);
   if (r.torque_pay) parts.push(`torque ${r.torque_pay}`);
   if (r.yaw_pay) parts.push(`yaw ${r.yaw_pay}`);
@@ -650,6 +653,16 @@ function update(m) {
   $('tilt').textContent = m.tilt ? `${fmt(m.tilt[0] * 180 / Math.PI, 0)}° / ${fmt(m.tilt[1] * 180 / Math.PI, 0)}°` : '—';
   $('falls').textContent = (m.upright_share === null || m.upright_share === undefined ? '—' : Math.round(100 * m.upright_share) + '%') + ` · ${m.falls} fall${m.falls === 1 ? '' : 's'}`;
   $('stance').textContent = m.pose.planted.filter(Boolean).length + ' / ' + m.pose.planted.length;
+  const paid = m.blocks.filter(b => b.reward_per_moment !== undefined && b.reward_per_moment !== null);
+  const lastPaid = paid.length ? paid[paid.length - 1].reward_per_moment : null;
+  $('reward-mean').textContent = paid.length
+    ? `${fmt(paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length, 3)} over ${paid.length * 100} · last 100: ${fmt(lastPaid, 3)}`
+      + (lastPaid <= -0.499 ? ' · at the cap' : '')
+    : '—';
+  const stanced = m.blocks.filter(b => b.mean_stance !== undefined && b.mean_stance !== null);
+  $('mean-stance').textContent = stanced.length
+    ? `${fmt(stanced.reduce((a, b) => a + b.mean_stance, 0) / stanced.length, 2)} over ${stanced.length * 100} · last 100: ${fmt(stanced[stanced.length - 1].mean_stance, 2)}`
+    : '—';
   $('turned').textContent = `${fmt(m.turned, 1)} rad (${fmt(m.omega, 2)} rad/s)`;
   $('refusals').textContent = m.refusals;
   $('pause').textContent = m.paused ? 'Resume' : 'Pause';
