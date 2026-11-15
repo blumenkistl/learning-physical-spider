@@ -46,7 +46,9 @@ window on that one life.
   `idle_leg_pay` (taken per leg whose foot stays off the floor past `idle_moments`, weighed by
   the foot's height up to `idle_height`) after a leg hung up for good, and `low_pay` (taken by
   how far the torso sits below its ride height) after a body lay on its belly with its legs lowered,
-  and `head_pay` (taken while the head touches the floor) after a body leant on its nose; all are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
+  and `head_pay` (taken while the head touches the floor) after a body leant on its nose, and
+  `touchdown_pay` (given per leg set down after `idle_moments` aloft) after legs held no preference
+  under the held-up-leg charge; all are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
   (off by default, measured dose, labelled as shaping).
 - **Senses read the body, not the law.** Joint angles, setpoints, forward speed, yaw rate,
   roll and pitch through the population code, and one floor-contact flag per foot. A new sense

@@ -28,7 +28,7 @@ from typing import Any
 from .brain import DEFAULT_LAYOUT, LAYOUTS
 from .brain import genes_from, parse_gene  # noqa: F401  (the server imports them from here too)
 from .life import (BACKWARD_PAY, BLOCK, COURSE, HIGH_WATER, OLD_GROUND, PROGRESS_PAY, PROGRESS_WINDOW, STANCE_PAY,
-                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, HEAD_PAY,
+                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, HEAD_PAY, TOUCHDOWN_PAY,
                    STRICT, UPRIGHT, YAW_PAY, Life, checked_course)
 from .model import LEGS, MODEL_DIGEST
 from .senses import DEFAULT as DEFAULT_SENSES, PER, Senses
@@ -74,6 +74,9 @@ def law_arguments(parser: argparse.ArgumentParser, default=lambda name, value: v
     parser.add_argument("--head-pay", type=float, default=float(default("HEAD_PAY", HEAD_PAY)),
                         help=f"shaping: reward taken each moment the head touches the floor "
                              f"(default {HEAD_PAY}; 0 = off)")
+    parser.add_argument("--touchdown-pay", type=float, default=float(default("TOUCHDOWN_PAY", TOUCHDOWN_PAY)),
+                        help=f"shaping: reward given per leg whose foot comes down after more than the idle "
+                             f"moments off the floor, while upright (default {TOUCHDOWN_PAY}; 0 = off)")
     parser.add_argument("--torque-pay", type=float, default=float(default("TORQUE_PAY", TORQUE_PAY)),
                         help=f"shaping: reward taken per unit of the moment's effort, the muscles' torque as a share "
                              f"of each one's most (0 slack, 1 all at full strength; default {TORQUE_PAY}; 0 = off)")
@@ -132,7 +135,7 @@ def life_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         stance_floor=args.stance_floor, stand_pay=args.stand_pay, carry=args.carry,
         idle_leg_pay=args.idle_leg_pay, idle_moments=args.idle_moments,
         idle_height=args.idle_height, low_pay=args.low_pay,
-        head_pay=args.head_pay,
+        head_pay=args.head_pay, touchdown_pay=args.touchdown_pay,
     )
 
 
@@ -159,6 +162,8 @@ def fallen_readings(life: Life, before: dict[str, Any], counted: int, upright: i
         "belly_upright_share": round((now["belly_upright_moments"] - before["belly_upright_moments"]) / upright, 3)
                                if upright else None,
         # the share of an upright moment's legs held up past the idle moments: a leg parked aloft
+        # legs set down after more than the idle moments aloft, while upright, per 1000 moments
+        "touchdowns_per_1000": round(1000.0 * (now["touchdowns"] - before["touchdowns"]) / counted, 2) if counted else None,
         "idle_leg_share": round((now["idle_leg_moments"] - before["idle_leg_moments"]) / (upright * LEGS), 3)
                           if upright else None,
         # the torso's pitch (rad, + nose down) and height at the end of the upright moments, and the

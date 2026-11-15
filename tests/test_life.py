@@ -1038,3 +1038,31 @@ def test_the_worst_charge_is_named_and_a_law_that_reaches_the_cap_is_noted(tmp_p
     notes = len(life.notes)
     life.set_law({"idle_leg_pay": 0.1})
     assert any("the cap is 0.5" in n for n in life.notes[notes:])
+
+
+def test_a_leg_set_down_after_the_idle_moments_is_given_the_touchdown_pay(tmp_path):
+    assert pay(0.0, touchdowns=2, touchdown_pay=0.05) == pytest.approx(0.1)
+    assert pay(0.0, touchdowns=2) == 0.0                                       # off by default
+    life = Life("random", seed=0, pace=0, runs=tmp_path, touchdown_pay=0.05, idle_moments=3)
+    assert life.law()["touchdown_pay"] == 0.05 and "touchdown 0.05" in law_text(life.law())
+    with pytest.raises(ValueError):
+        Life("random", seed=0, pace=0, runs=tmp_path, touchdown_pay=-0.1)
+    for _ in range(BLOCK):
+        life.tick()
+    block = life.blocks[-1]
+    assert block["terms"]["touchdown"] == pytest.approx(0.05 * block["touchdowns"] / BLOCK, abs=1e-4)
+    assert life.touchdowns >= block["touchdowns"]
+
+
+def test_a_touchdown_is_counted_only_after_the_idle_moments_aloft(tmp_path):
+    life = Life("random", seed=0, pace=0, runs=tmp_path, touchdown_pay=0.05, idle_moments=3)
+    life.aloft = [3] * LEGS                                 # aloft as long as the idle moments: not yet held up
+    life.tick()
+    assert life.touchdowns == 0
+    life.aloft = [4] * LEGS                                 # past them: every foot down at the moment's end counts
+    before = life.body.upright > UPRIGHT
+    life.tick()
+    down = sum(life.body.planted_before)
+    assert before and down > 0                              # the newborn stands on its feet
+    assert life.touchdowns == down
+    assert life.reward == pytest.approx(min(0.5, 0.05 * down + life._block[-1]["terms"]["progress"]), abs=1e-9)

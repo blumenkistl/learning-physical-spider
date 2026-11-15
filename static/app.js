@@ -515,7 +515,7 @@ function describedBy(d) {
 // high_water and old_ground stay law settings (the nursery's --high-water and --old-ground) but are
 // not on the page: unmeasured on this body and off; a life born with them still shows its mark.
 const FOUNDER_ENTROPY = 0.0;   // spider/brain.py's founder gene (tests/test_server.py holds them equal)
-const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry', 'idle_leg_pay', 'idle_moments', 'idle_height', 'low_pay', 'head_pay'];
+const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry', 'idle_leg_pay', 'idle_moments', 'idle_height', 'low_pay', 'head_pay', 'touchdown_pay'];
 // The nursery's words for a brain's gene overrides: {gamma: 0.99, arousal: {need: 0}} → "gamma=0.99 arousal.need=0".
 function geneWords(genes, prefix = '') {
   return Object.entries(genes || {}).map(([k, v]) =>
@@ -542,6 +542,7 @@ function law(m) {
   if (r.carry) parts.push('carried');
   if (r.low_pay) parts.push(`low ${r.low_pay}`);
   if (r.head_pay) parts.push(`head ${r.head_pay}`);
+  if (r.touchdown_pay) parts.push(`touchdown ${r.touchdown_pay}`);
   if (r.idle_leg_pay) parts.push(`idle leg ${r.idle_leg_pay}${r.idle_moments && r.idle_moments !== 20 ? ' after ' + r.idle_moments : ''}`);
   if (r.upright_pay) parts.push(`upright ${r.upright_pay}`);
   if (r.torque_pay) parts.push(`torque ${r.torque_pay}`);
@@ -660,11 +661,12 @@ function update(m) {
       + (lastPaid <= -0.499 ? ' · at the cap' : '')
     : '—';
   const termed = m.blocks.filter(b => b.terms);
-  const TERM_NAMES = ['progress', 'stand', 'idle', 'low', 'head', 'stance', 'yaw', 'upright', 'torque'];
+  const TERM_NAMES = ['progress', 'stand', 'touchdown', 'idle', 'low', 'head', 'stance', 'yaw', 'upright', 'torque'];
   const termMean = k => termed.reduce((a, b) => a + (b.terms[k] || 0), 0) / termed.length;
   const shown = termed.length ? TERM_NAMES.filter(k => k === 'progress' || termed.some(b => b.terms[k])) : [];
   $('reward-terms').textContent = termed.length
     ? shown.map(k => `${k} ${fmt(termMean(k), 3)}`).join(' · ') + ` (over ${termed.length * 100})`
+      + (termed.some(b => b.touchdowns !== undefined) ? ` · ${termed.reduce((a, b) => a + (b.touchdowns || 0), 0)} touchdowns` : '')
     : '—';
   const r = described && described.reward;
   const worst = r && r.worst_charge !== undefined ? r.worst_charge : null;

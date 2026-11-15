@@ -169,7 +169,7 @@ saved before the option continues without it.
 ## The reward (`spider/life.py`)
 
 Progress along the body's own heading pays, 40 a metre, capped at ±0.5 a moment; backward and
-standing still pay zero. Eight hints can be switched on, each shaping, not an outcome, and
+standing still pay zero. Nine hints can be switched on, each shaping, not an outcome, and
 each off in the shipped law, and one setting of the outcome (`carry`):
 
 - `stance_pay`: taken per foot short of four on the floor through the moment. Under
@@ -229,6 +229,15 @@ each off in the shipped law, and one setting of the outcome (`carry`):
   `low_pay` and then leant on its nose, pitched 0.25–0.33 rad down with the head on the floor in
   a quarter of the moments, standing on the head and 1.6 feet with the rest free (2026-11-15,
   240,000 moments). Added on the owner's choice. Unmeasured.
+- `touchdown_pay` (`--touchdown-pay`, the page's law panel, "touchdown"): given per leg whose
+  foot comes down after more than `idle_moments` off the floor, while upright; each block counts
+  its `touchdowns`, the nursery `touchdowns_per_1000`. The held-up-leg charge is a state, and a
+  charge that stays nearly the same is folded into the critic's baseline; one dopamine moves
+  every synapse, so credit reaches one leg only through its slot's fresh trace, and an event
+  right after that leg's lowering is where that trace is. A leg may learn to lift and set down
+  for the pay: that is a step. Added on the owner's choice after five of eight legs of a live body
+  held no preference between lowering and lifting under `idle_leg_pay` (2026-11-15, 610,000
+  moments). Unmeasured.
 - `carry` (`--carry`, the page's law panel, "carried"): forward progress pays only while the belly
   is off the floor, so a body pushed along on its belly earns nothing forward; backward is
   charged as ever. Not a hint on top but the outcome paid only for a carried body. Added with
