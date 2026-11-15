@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Learning Physical Spider</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="importmap">
+    {"imports": {"three": "/static/vendor/three/three.module.min.js"}}
+  </script>
+</head>
+<body>
+  <canvas id="world"></canvas>
+  <div id="init" class="show" role="status" aria-live="polite"><div class="init-box"><span class="spinner"></span>Initializing, please wait</div></div>
+
+  <aside id="hud">
+    <h1>Learning Physical Spider <span id="policy" class="tag">—</span></h1>
+    <div class="grid">
+      <div title="moments lived by this brain: one moment is 50 ms of the body's clock (50 MuJoCo steps of 1 ms), one answer of the brain, one outcome of the world"><span class="k">moment</span><span class="v" id="moments">0</span></div>
+      <div title="the brain's mode this moment: aroused (it learns), routine (greedy, learning nothing) or refused (no answer, the outcome stays owed)"><span class="k">mode</span><span class="v" id="mode">idle</span></div>
+      <div title="distance travelled along the body's own heading, summed over the life: what the reward pays"><span class="k">forward</span><span class="v" id="forward">0.000 m</span></div>
+      <div title="straight-line metres from the point of birth, whatever the way there: the sum of every moment's motion over the ground, which a recentre does not touch (the body is put back over the origin at the arena's edge, 5 m out, and how often is counted here). Forward metres pay a circle; this does not"><span class="k">from birth</span><span class="v" id="net">0.000 m</span></div>
+      <div title="the torso's forward velocity this moment, along its own heading"><span class="k">speed</span><span class="v" id="speed">0.000 m/s</span></div>
+      <div title="the outcome of the last command, delivered at the next moment; owed is an outcome not yet delivered (a refusal or a control keeps it)"><span class="k">reward</span><span class="v" id="reward">—</span></div>
+            <div class="wide speedrow" title="the speed as a bar, as means and not as the moment's sample of the stride: the fill is the mean forward speed of the last 1000 moments (50 s of the body's clock, the learning bar's horizon), blue forward and red backward, on a scale of 0.05 m/s each way; the tick is the mean of the last 100 moments"><span class="k">mean</span><div class="speedbar"><div class="zero"></div><div id="speed-fill"></div><div id="speed-mean"></div></div><span class="v" id="speed-label">0.000 m/s</span></div>
+      <div class="wide" title="the reward law this life is paid under: progress each moment, or the mean of a window of moments; the course law pays progress along one fixed heading of the world (shown with the metres along it); the high-water mark pays new ground only; stance and yaw are shaping terms"><span class="k">law</span><span class="v" id="law">—</span></div>
+      <div class="wide" title="the body: the MuJoCo model's digest (a save continues only in the body it was made in) and the MuJoCo version; then the brain's slot layout if not per joint, and the senses beyond the founder's"><span class="k">body</span><span class="v" id="body">—</span></div>
+      <div title="the torso's up axis along the world's: 1 standing, 0 on its side, below 0 on its back; above 0.5 counts as upright. A reading, never paid"><span class="k">upright</span><span class="v" id="upright">—</span></div>
+      <div title="the torso's roll (+ left side up) and pitch (+ nose down), degrees"><span class="k">roll / pitch</span><span class="v" id="tilt">—</span></div>
+      <div class="wide" title="the share of the life's moments that ended upright, and the falls: moments that began upright and ended not. The world never rights the body; a fallen life is a reading too"><span class="k">upright share / falls</span><span class="v" id="falls">—</span></div>
+      <div title="the arousal law: level is the arousal of the moment, want the need not met; above the threshold the brain is aroused and learns"><span class="k">level / want</span><span class="v" id="arousal">—</span></div>
+      <div title="settle sweeps the brain took to answer this moment, and how many of them were learning sweeps"><span class="k">sweeps</span><span class="v" id="sweeps">—</span></div>
+      <div title="wall-clock cost of a moment on this machine: a residual of this implementation, not energy"><span class="k">ms / moment</span><span class="v" id="ms">—</span></div>
+      <div title="moments a second the loop is asked for and, after it, how many it actually makes; 20 is the body's own clock, max as fast as the machine goes"><span class="k">pace</span><span class="v" id="pace">—</span></div>
+      <div title="feet touching the floor at the moment's end, of eight; the stance hint pays per foot short of four"><span class="k">feet planted</span><span class="v" id="stance">—</span></div>
+      <div title="unsigned radians the heading has turned over the life, and the turn rate of the moment; the yaw hint pays per radian"><span class="k">turned</span><span class="v" id="turned">—</span></div>
+      <div title="moments the brain gave no answer (its settle did not converge): the joints hold and the outcome stays owed"><span class="k">refusals</span><span class="v" id="refusals">0</span></div>
+    </div>
+    <div id="learning" title="share of the last 1000 moments the brain spent aroused, which is when it learns">
+      <div class="scale"><span>Brain Stall</span><span class="v" id="learning-pct">—</span><span>Learning</span></div>
+      <div class="bar"><div id="learning-cover"></div></div>
+      <p class="small" id="learning-note"></p>
+    </div>
+    <p id="blocks" class="small"></p>
+    <p id="notes" class="small"></p>
+
+    <div class="buttons">
+      <button data-op="pause" id="pause" title="stop and resume the loop; nothing is lost, the pending outcome stays owed">Pause</button>
+      <button data-op="recentre" title="the body returns to the origin with its pose and heading; nothing else changes">Recentre</button>
+      <button data-op="save" title="write the brain, its pending outcome and the world to runs/ (the server also autosaves and saves at shutdown)">Save</button>
+      <button data-op="load" title="continue the saved life from runs/, with its world, its law and the outcome it had not yet received">Load</button>
+      <button data-op="reset" id="reset" class="danger" title="the one deliberate end of a life: after confirmation the saved life is deleted and a newborn brain of the birth named under settings takes the body">Reset</button>
+    </div>
+    <div class="buttons">
+      <span class="k">policy</span>
+      <button data-op="policy" data-value="brain" title="the living brain commands the body and learns">brain</button>
+      <button data-op="policy" data-value="random" title="the baseline: a uniformly random command per joint; the brain waits with its outcome owed and nothing is saved">random</button>
+      <button data-op="policy" data-value="frozen" title="a save/load copy of the live brain that answers greedily and never learns: the control for &quot;kept learning&quot;; nothing is saved">frozen copy</button>
+    </div>
+    <div class="buttons">
+      <span class="k">pace</span>
+      <button data-op="pace" data-value="20">1×</button>
+      <button data-op="pace" data-value="40">2×</button>
+      <button data-op="pace" data-value="100">5×</button>
+      <button data-op="pace" data-value="0">max</button>
+    </div>
+    <details id="settings">
+      <summary class="k">settings</summary>
+      <div class="settings">
+        <div class="col">
+          <p class="small" title="the reward law, changed on the living brain from the next moment on; the outcome already earned is delivered as earned. A life whose law changes is a schedule, not a life under one law: every change is noted, counted on the law line, reported as law_changes and saved with the life. Hover a setting for what it does">law, live</p>
+          <label title="shaping, not an outcome: reward taken per foot short of four touching the floor at the moment's end. 0 is off and the shipped law. Measured on the learning spider's kinematic body only; unmeasured on this one."><span>stance pay</span><input id="law-stance_pay" type="number" step="0.05" min="0"></label>
+          <label title="shaping, not an outcome: reward taken per radian the heading turns in a moment. 0 is off and the shipped law. Measured on the learning spider's kinematic body only; unmeasured on this one."><span>yaw pay</span><input id="law-yaw_pay" type="number" step="0.1" min="0"></label>
+          <label title="the course law: pay progress along one fixed heading of the world instead of along the body's own, so that a circle nets nothing and only a line pays. Not a hint: the same outcome, measured along one heading. Ticked on a life without a course, the course is the heading the body holds now (keep going this way), and the metres along it and the high-water mark start at zero; the heading is shown on the law line. The brain reads its heading through the compass (next birth); without one it senses only its yaw rate. Measured on the learning spider's kinematic body only; unmeasured on this one."><span>course</span><input id="law-course" type="checkbox"></label>
+          <label title="the strict course: under the course law, pay the lesser of the moment's motion along the course and along the body's own heading, so that only nose first on the course pays in full. Not a hint: the same outcome measured twice, the lesser paid. Needs the course. Measured on the learning spider's kinematic body only; unmeasured on this one."><span>strict</span><input id="law-strict" type="checkbox"></label>
+          <label title="moments the progress term is averaged over: 1 pays each moment's own progress (the plain law), N pays the mean of the last N, so a leg that comes back earns nothing over the window. Measured on the learning spider's kinematic body only; unmeasured on this one."><span>window</span><input id="law-window" type="number" step="1" min="1"></label>
+          <label title="pay new ground only: progress beyond the farthest point reached, so a sway earns nothing. Not a hint, the same outcome counted once; the mark is the life's and is shown on the law line. Off by default. Measured on the learning spider's kinematic body only; unmeasured on this one."><span>high-water</span><input id="law-high_water" type="checkbox"></label>
+          <label title="under the high-water mark, the share of the plain pay given for progress on ground already reached: 0 is the mark alone, 1 the plain law. Needs high-water on. Measured on the learning spider's kinematic body only; unmeasured on this one."><span>old ground</span><input id="law-old_ground" type="number" step="0.1" min="0" max="1"></label>
+          <label title="reward per metre of progress, under the cap of 0.5 a moment: 40 is the founder (0.4 a moment at 0.2 m/s)"><span>pay per metre</span><input id="law-pay_per_metre" type="number" step="1" min="1"></label>
+          <label title="share of the pay per metre charged for a metre backward: 0 leaves backward free (the shipped law), 1 charges it in full"><span>backward pay</span><input id="law-backward_pay" type="number" step="0.1" min="0" max="1"></label>
+          <button id="apply-law" title="apply the nine settings above from the next moment on; the same law is no change and is not counted">Apply law</button>
+        </div>
+        <div class="col">
+          <p class="small" title="what Reset gives birth to. Genes are composed once, at birth, so they, the seed, the slots and the senses are set here and take effect on Reset only; the law above is the life's and stays. The sidecar carries the birth, so the server continues it on the next start whatever its flags say">next birth, on Reset</p>
+          <label title="the random seed the newborn brain is composed with; the same seed and genes compose the same newborn"><span>seed</span><input id="birth-seed" type="number" step="1" min="0"></label>
+          <label title="how the brain's answer is read, composed into the brain at birth: a slot per joint (twenty-four slots of three: to the low end of the range, hold the setpoint, to the high end; the founder), a slot per leg (eight slots of twenty-seven, the triples of a leg's three joint commands: hip swing, hip lift, knee) or a slot per pair (four slots of twenty-seven, each a diagonal pair of legs, both taking the same answer). The same twenty-four commands reach the body every way. A slot per pair couples legs the body does not: a different model, a coupled body"><span>slots</span><select id="birth-layout"><option value="joint">per joint</option><option value="leg">per leg</option><option value="pair">per pair</option></select></label>
+          <label title="sense the heading too, as its cosine and sine through the same code: 440 inputs instead of 424. The compass reads the world's heading (0 is the heading at birth), not the course; it is the sense the course law can be read by"><span>compass</span><input id="birth-compass" type="checkbox"></label>
+          <label title="sense the velocity over the ground in the world's frame too, x and y, through the same code: 440 inputs instead of 424 (456 with the compass). Reads the world, not the law"><span>ground</span><input id="birth-ground" type="checkbox"></label>
+          <label title="the actor's own eligibility decay, apart from the critic's (cadence docs/reward.md): empty is the founder, none, where an act's credit fades at gamma times lam a moment; 0.9 remembers acts over about 10 moments. Unmeasured on this body"><span>hold</span><input id="birth-hold" type="number" step="0.01" min="0" max="1" placeholder="none"></label>
+          <label title="the policy's entropy in the actor's step (cadence docs/reward.md): 0.1 is the founder and the docs' dose; 0 is off. Unmeasured on this body"><span>entropy</span><input id="birth-entropy" type="number" step="0.05" min="0"></label>
+          <label title="maturity (cadence docs/reward.md): the slow use of plasticity that lowers the actor's step as it is spent, at scale 10 and recovery 200,000 moments (maturity_scale and maturity_recovery in the genes below set others). Off is the founder. Unmeasured on this body"><span>maturity</span><input id="birth-maturity" type="checkbox"></label>
+          <label title="a fixed random sparse code of the senses (cadence docs/senses.md): the cortex reads that many units, one in ten active, in place of the 424 coded inputs, and the memories key on them; empty is the founder, the observation itself. At least 24. Unmeasured on this body"><span>code</span><input id="birth-code" type="number" step="1" min="0" placeholder="none"></label>
+          <label title="a code region of that many units between the senses and the first module (cadence docs/senses.md), learned by local rules while the brain lives, on which the cortex computes and the memories key; empty is the founder, none. Costs two to three times a moment. Unmeasured on this body"><span>learned code</span><input id="birth-learned-code" type="number" step="1" min="0" placeholder="none"></label>
+          <label title="other gene overrides for the newborn in the nursery's words, space-separated name=value; empty is the founder. Founder: temperature=0.3 eta=0.03 eta_bias=0.003 lam=0.6 gamma=0.99 eta_critic=5 arousal.need=0.2 arousal.heat=2 modules=64,32 recall=false history_decays= (none) hold=none entropy=0.1 maturity=false code=none learned_code=none. Examples: gamma=0.95 eta_critic=20 arousal.need=0 modules=48,24 recall=true history_decays=0,0.7,0.95 hold=0.9"><span>genes</span><input id="birth-genes" type="text" placeholder="founder" spellcheck="false"></label>
+          <p class="small" id="genesline" title="the genes and seed the living brain was born with">—</p>
+        </div>
+      </div>
+    </details>
+    <p class="small" id="brainline">—</p>
+    <canvas id="brain" width="320" height="96"></canvas>
+    <p class="small">drag to turn the world · wheel to zoom · <span id="link">connecting…</span></p>
+  </aside>
+
+  <aside id="brainpanel">
+    <div class="top">
+      <span>Inside the brain <span class="small" id="brainpanel-note"></span></span>
+      <span class="tools"><button id="view-fit" title="return to the resting view">fit</button><button id="view-spin" class="on" title="slow spin until the first drag">spin</button></span>
+    </div>
+    <div class="host" id="view-host"></div>
+    <p class="small">blue: activity · gold: synapses changed this moment · drag to orbit, wheel to zoom</p>
+  </aside>
+
+  <aside id="worldpanel" title="how the world is drawn: the colours and the light are the page's choice, not a law of the world; the brain senses joints, feet and motion, never a colour">
+    <div class="top"><span>The world</span></div>
+    <div class="buttons">
+      <label for="surface" class="k">surface</label>
+      <select id="surface" title="what the ground looks like: plain (in the ground colour), a meadow, gravel, or meadow and gravel together. Only how the world is drawn: the body's contact and the reward are the same on every surface, and the brain senses no colour; kept in this browser only">
+        <option value="plain">plain</option>
+        <option value="meadow">meadow</option>
+        <option value="gravel">gravel</option>
+        <option value="mixed">meadow & gravel</option>
+      </select>
+      <select id="follow" title="the camera: following the spider (the page's own), or fixed where it is now, so the spider may walk out of the picture; drag and the wheel still turn and zoom. How the world is drawn, not its law; kept in this browser only">
+        <option value="follows">view follows</option>
+        <option value="fixed">view fixed</option>
+      </select>
+    </div>
+    <div class="buttons">
+      <label for="ground-colour" class="k">ground</label>
+      <input type="color" id="ground-colour" value="#1b2230" title="the colour of the ground disc under the plain surface; kept in this browser only">
+      <label for="grid-colour" class="k">grid</label>
+      <input type="color" id="grid-colour" value="#262e3c" title="the colour of the grid lines (the two axes through the origin a shade lighter); kept in this browser only">
+      <button id="view-default" title="back to the page's own colours and light">default</button>
+    </div>
+    <div class="buttons">
+      <label for="light" class="k">light</label>
+      <input type="range" id="light" min="0.3" max="3" step="0.1" value="1" title="the light on the body and the ground, sky and sun together: 1× is the page's own; kept in this browser only">
+      <span class="v" id="light-value">1.0×</span>
+    </div>
+  </aside>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

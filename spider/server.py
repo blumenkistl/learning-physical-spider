@@ -1,0 +1,179 @@
+"""The web face of one spider's life: aiohttp serves the page, pushes the latest moment over a
+WebSocket at the life's pace (at most 30 frames a second) and takes controls as JSON.
+
+    python server.py                    # http://127.0.0.1:8080
+    python server.py --port 8081 --runs runs/try --autosave-minutes 0
+    PORT=8090 POLICY=random python server.py
+
+The flags are the nursery's (``python server.py --help``). Each has an environment variable
+of the same meaning that sets its default: HOST (127.0.0.1), PORT (8080), POLICY (brain),
+SEED (0), PACE (20 moments/s), BACKEND (cpu, the only one), RUNS (runs), AUTOSAVE_MINUTES (5),
+the law's STANCE_PAY (0), YAW_PAY (0), PROGRESS_WINDOW (1), HIGH_WATER (0), OLD_GROUND (0),
+PAY_PER_METRE (40), BACKWARD_PAY (0), COURSE (off) and STRICT (0), and for a newborn LAYOUT
+(joint), COMPASS (0) and GROUND (0). There is one body (``MODEL_DIGEST``): no flag chooses
+muscles, friction or support, the physics owns them. A saved life in RUNS is continued, with
+its own genes, seed, senses, layout and law; shutdown saves it. The page's settings change the
+law on the living brain (control ``law``) and name the next birth (control ``reset`` with a
+value).
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import os
+from pathlib import Path
+
+from aiohttp import web
+
+from .life import Life
+from .nursery import birth_arguments, law_arguments, life_kwargs
+
+STATIC = Path(__file__).resolve().parent.parent / "static"
+FRAME_SECONDS = 1.0 / 30.0
+log = logging.getLogger("spider")
+LIFE = web.AppKey("life", Life)
+SOCKETS = web.AppKey("sockets", set)
+
+
+def make_app(life: Life, static: Path = STATIC) -> web.Application:
+    app = web.Application()
+    app[LIFE] = life
+    app[SOCKETS] = set()
+
+    async def index(request: web.Request) -> web.StreamResponse:
+        page = static / "index.html"
+        if not page.exists():
+            # the page is ported last (PORTING.md, step 4); the API serves the life meanwhile
+            raise web.HTTPNotFound(text="no page yet: the life is at /api/state, /api/describe and /ws")
+        return web.FileResponse(page)
+
+    async def state(request: web.Request) -> web.Response:
+        return web.json_response(life.latest)
+
+    async def describe(request: web.Request) -> web.Response:
+        return web.json_response(life.describe())
+
+    async def brainview(request: web.Request) -> web.Response:
+        # the whole connectome laid out for the page's brain view, built once per brain
+        loop = asyncio.get_running_loop()
+        return web.json_response(await loop.run_in_executor(None, life.spider))
+
+    async def control(request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            raise web.HTTPBadRequest(text="a JSON body {op, value?} is required")
+        op = body.get("op") if isinstance(body, dict) else None
+        if not isinstance(op, str):
+            raise web.HTTPBadRequest(text="op must be a string")
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(None, life.control, op, body.get("value"))
+        except ValueError as error:
+            raise web.HTTPBadRequest(text=str(error))
+        return web.json_response(result)
+
+    async def socket(request: web.Request) -> web.WebSocketResponse:
+        ws = web.WebSocketResponse(heartbeat=10)
+        await ws.prepare(request)
+        app[SOCKETS].add(ws)
+        sender = asyncio.create_task(_push(ws, life))
+        try:
+            async for _ in ws:            # the page sends nothing; this drains until close
+                pass
+        finally:
+            sender.cancel()
+            app[SOCKETS].discard(ws)
+        return ws
+
+    app.router.add_get("/", index)
+    app.router.add_get("/api/state", state)
+    app.router.add_get("/api/describe", describe)
+    app.router.add_get("/api/brainview", brainview)
+    app.router.add_post("/api/control", control)
+    app.router.add_get("/ws", socket)
+    if static.is_dir():
+        app.router.add_static("/static/", static, show_index=False)
+    return app
+
+
+async def _push(ws: web.WebSocketResponse, life: Life) -> None:
+    last = None
+    while not ws.closed:
+        latest = life.latest
+        if latest is not last:                       # a new moment, or a control's snapshot
+            last = latest
+            await ws.send_str(json.dumps(latest))
+        await asyncio.sleep(FRAME_SECONDS)
+
+
+def _env_default(name: str, value):
+    """The environment's value for a flag's default: booleans read as flags, the rest as given."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return value
+    if isinstance(value, bool):
+        return raw.strip().lower() not in ("", "0", "false", "no")
+    return raw
+
+
+def arguments(argv: list[str] | None = None) -> argparse.Namespace:
+    """The server's flags, the nursery's names; the environment sets each one's default."""
+    env = os.environ.get
+    parser = argparse.ArgumentParser(description="the physical spider's web server")
+    parser.add_argument("--host", default=env("HOST", "127.0.0.1"))
+    parser.add_argument("--port", type=int, default=int(env("PORT", "8080")))
+    parser.add_argument("--policy", choices=("brain", "random", "frozen"), default=env("POLICY", "brain"))
+    parser.add_argument("--seed", type=int, default=int(env("SEED", "0")))
+    parser.add_argument("--pace", type=float, default=float(env("PACE", "20")),
+                        help="moments a second (default 20; 0 = as fast as possible)")
+    parser.add_argument("--runs", type=Path, default=Path(env("RUNS", "runs")), help="where the life is saved and continued from")
+    parser.add_argument("--autosave-minutes", type=float, default=float(env("AUTOSAVE_MINUTES", "5")),
+                        help="minutes between autosaves (default 5; 0 = off)")
+    birth_arguments(parser, _env_default)
+    law_arguments(parser, _env_default)
+    return parser.parse_args(argv)
+
+
+def life_from(args: argparse.Namespace) -> Life:
+    """The life the flags describe; a saved life under ``--runs`` is continued."""
+    life = Life(args.policy, seed=args.seed, pace=args.pace, runs=args.runs, **life_kwargs(args))
+    life.autosave_minutes = float(args.autosave_minutes)
+    if args.policy == "brain" and life.brain_file.exists():
+        try:
+            report = life.load()
+        except ValueError as e:
+            # a save of another body or other senses: better no server than a life that cannot go on
+            raise SystemExit(f"cannot continue the saved life: {e}") from e
+        log.info("continued %s: moment %s, custody %s", life.brain_file, life.moments, report.get("custody"))
+    return life
+
+
+def main(argv: list[str] | None = None) -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    args = arguments(argv)
+    life = life_from(args)
+    app = make_app(life)
+
+    async def on_startup(app: web.Application) -> None:
+        life.start()
+
+    async def on_shutdown(app: web.Application) -> None:
+        life.stop()
+        for ws in set(app[SOCKETS]):
+            await ws.close()
+        if life.brain is not None and life.policy is life.brain:
+            log.info("saved %s", life.save())
+
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+    log.info("spider on http://%s:%d policy=%s reward=%s", args.host, args.port, life.policy.policy,
+             life.describe()["reward"])
+    web.run_app(app, host=args.host, port=args.port, print=None)
+
+
+if __name__ == "__main__":
+    main()

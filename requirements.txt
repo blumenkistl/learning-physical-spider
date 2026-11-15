@@ -1,0 +1,7 @@
+cadence-net[fast]==0.99.0
+mujoco==4.0.1
+numpy>=1.26,<3
+aiohttp>=3.9
+pytest>=8
+pytest-aiohttp>=1.0
+pytest-asyncio>=1.0
