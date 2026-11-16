@@ -9,7 +9,9 @@ body never did. ``compass`` and ``ground`` are the learning spider's options of 
 named in every reading made under them. ``up`` is new: the world's up in the torso's frame, three
 readings that tell the side from the back, which roll and pitch cannot (roll is coded over
 +-pi/2 and clamped, so a body on its back reads as one on its side, flickering between the two
-sides as the roll crosses +-pi).
+sides as the roll crosses +-pi). ``load`` is new too: each foot's load, the normal force of its
+contacts with the floor as a share of the body's weight, through the same code, what a spider's
+slit sensilla read as strain in its legs (eight readings more; the raw contact flags stay).
 """
 
 from __future__ import annotations
@@ -39,17 +41,24 @@ GROUND_NAMES = ["ground_vx", "ground_vy"]
 GROUND_RANGES = [SPEED_RANGE, SPEED_RANGE]
 UP_NAMES = ["up_fwd", "up_left", "up_up"]
 UP_RANGES = [(-1.0, 1.0)] * 3
+LOAD_RANGE = (0.0, 0.5)         # a share of the body's weight: a foot of four carries a quarter, of two a half
+LOAD_NAMES = [f"load{i}" for i in range(LEGS)]
+LOAD_RANGES = [LOAD_RANGE] * LEGS
 
 
 class Senses:
-    def __init__(self, per: int = PER, compass: bool = False, ground: bool = False, up: bool = False):
+    def __init__(self, per: int = PER, compass: bool = False, ground: bool = False, up: bool = False,
+                 load: bool = False):
         self.compass = bool(compass)
         self.ground = bool(ground)
         self.up = bool(up)
+        self.load = bool(load)
         self.names = (list(READING_NAMES) + (COMPASS_NAMES if self.compass else [])
-                      + (GROUND_NAMES if self.ground else []) + (UP_NAMES if self.up else []))
+                      + (GROUND_NAMES if self.ground else []) + (UP_NAMES if self.up else [])
+                      + (LOAD_NAMES if self.load else []))
         self.ranges = (list(RANGES) + (COMPASS_RANGES if self.compass else [])
-                       + (GROUND_RANGES if self.ground else []) + (UP_RANGES if self.up else []))
+                       + (GROUND_RANGES if self.ground else []) + (UP_RANGES if self.up else [])
+                       + (LOAD_RANGES if self.load else []))
         self.code = PopulationCode(self.ranges, per=per)
         self.per = per
         self.inputs = self.code.inputs + LEGS
@@ -64,6 +73,8 @@ class Senses:
             own += [list(spider.ground_velocity())]
         if self.up:
             own += [spider.up()]
+        if self.load:
+            own += [spider.foot_loads()]
         return np.concatenate(own)
 
     def observe(self, spider: Spider) -> np.ndarray:
@@ -77,17 +88,18 @@ class Senses:
         return names + [f"planted{i}" for i in range(LEGS)]
 
     def options(self) -> dict:
-        return {"per": self.per, "compass": self.compass, "ground": self.ground, "up": self.up}
+        return {"per": self.per, "compass": self.compass, "ground": self.ground, "up": self.up, "load": self.load}
 
     def words(self) -> str:
-        """The options in a note's words: ", a compass, the ground sense, the up sense"."""
+        """The options in a note's words: ", a compass, the ground sense, the up sense, the load sense"."""
         return ((", a compass" if self.compass else "") + (", the ground sense" if self.ground else "")
-                + (", the up sense" if self.up else ""))
+                + (", the up sense" if self.up else "") + (", the load sense" if self.load else ""))
 
 
 # A newborn's senses unless a birth says otherwise: the compass, the ground sense and the up sense
-# are on (the owner's choice, 2026-11-15, unmeasured against them off); ``Senses()`` is the plain set.
-DEFAULT = Senses(compass=True, ground=True, up=True)
+# are on (the owner's choice, 2026-11-15, unmeasured against them off), and the load sense (the
+# owner's choice, 2026-11-16, unmeasured); ``Senses()`` is the plain set.
+DEFAULT = Senses(compass=True, ground=True, up=True, load=True)
 INPUTS = DEFAULT.inputs
 
 

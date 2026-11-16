@@ -87,12 +87,18 @@ between legs. Whether the body stands is a fact of the physics, not a test.
       three, three of them for more than 9,000 moments; the seeds spread from 1 % to 94 % head
       down;
   - a **knee**: lift of the tibia, −0.5..1.0 rad, + up and out, below 0 pressing;
-  - legs I..IV of 0.62, 0.57, 0.53 and 0.65 m (IV and I longest, III shortest), each 40 % femur
-    (rising 0.6 rad at lift 0), 53 % tibia and 7 % tarsus (the foot) at a fixed ankle bend of
-    0.4 rad (no joint, no muscle);
-  - a foot sphere with friction 0.8; the legs have 0.3, and the torso, head, waist and abdomen
+  - legs I..IV of 0.62, 0.57, 0.53 and 0.65 m (IV and I longest, III shortest) as drawn, each
+    40 % femur (rising 0.6 rad at lift 0), 45 % tibia and 7 % tarsus (the foot) at a fixed ankle
+    bend of 0.4 rad (no joint, no muscle), so the legs reach 92 % of those lengths; the tibia had
+    53 % until body `cf9ce740e2b88b70` and is shorter since `df58a9084a68f1c6` (below);
+  - a foot sphere with friction 1.5; the legs have 0.3, and the torso, head, waist and abdomen
     1.5, so a body that drags its belly is slowed. MuJoCo takes the larger friction of a
-    contact's two geoms, and the floor has 0.8, so legs and feet slide at 0.8 and the belly at 1.5;
+    contact's two geoms, and the floor has 0.8, so the legs slide at 0.8 and the feet and the
+    belly at 1.5. The feet had 0.8 until body `eab70bddbcdbbdda`; they grip more since body
+    `2bd499aae3fd2b8b`, chosen on the owner's ask after a probe of what the body can do (below);
+  - since body `cf9ce740e2b88b70`, a pawl claw on each foot (below): a passive hinge with a stop,
+    the claw slanted 0.5 rad back and down, its tip gripping at 1.8, and the pad (the foot sphere)
+    at 0.3 in place of 1.5, both over the floor's 0.8 by geom priority; 0.01 g a claw;
   - 0.5 g for the femur and 0.5 g below the knee (0.45 g tibia, 0.05 g tarsus), for 30 g in all.
 - **Twenty-four position servos**, one per joint:
   - hip swing: 0.02 N·m at most, stiffness 0.5 N·m/rad;
@@ -115,10 +121,37 @@ between legs. Whether the body stands is a fact of the physics, not a test.
     upright moments against 8 %, a fifth of the moments on the back against none (one run 82 %),
     3.0 m forward against 2.9 m, two of four runs ending fallen (24,171 and 49,337 moments);
   - knee: 0.04 N·m at most, stiffness 1.0 N·m/rad;
-  - joint damping set so that a free joint at full torque runs at learning-spider's rates
-    (1.5 rad/s for both hip hinges, 2.5 for the knee).
+  - joint damping set so that a free joint at full torque runs at twice learning-spider's rates
+    (3.0 rad/s for both hip hinges, 5.0 for the knee, `RATE_SCALE` 2) since body
+    `9314a7863d588419`; learning-spider's own (1.5 and 2.5) until `df58a9084a68f1c6` (below).
 - **Physics:** 1 ms steps, 50 per moment (the brain stays at 20 Hz), the `implicitfast`
   integrator, elliptic friction cones and stiff contacts (`solref` 0.004).
+
+A probe of what the body can do (2026-11-16, a scripted alternating tetrapod outside any life:
+legs L1 R2 L3 R4 and R1 L2 R3 L4 take turns, the swinging four lift, swing forward and set down
+while the standing four push back; flat ground, 600 moments, the best of half-cycles 4, 6, 8,
+10 and 14 moments; a reading of one crude gait, not the body's best). On `eab70bddbcdbbdda`
+(feet 0.8) it went 7.5 cm/s with 2.8 of the four standing feet down on average. A foot of four
+carries about 0.074 N and so holds about 0.06 N at 0.8, against a hip that pushes about 0.04 N:
+the feet slipped. Every muscle twice as strong and twice as fast turned the hip under load at
+2.1 rad/s against 0.9 but went 3.0 cm/s with 2.0 feet down, since a stronger push slips sooner.
+Feet at 1.5 went 14.9 cm/s with 3.3 feet down (15.1 with the muscles doubled, 13.8 at 2.5); the
+body stayed upright throughout in every variant. A grip that slides forward and holds backward,
+as a spider's hairs do, is not in MuJoCo's friction, which is the same either way along the
+floor; built as a hand-made force it would be a law of this project's, not the physics.
+
+Claws, as shape alone, were probed next (2026-11-16, on `2bd499aae3fd2b8b`): `CLAW_LENGTH` in
+`spider/model.py` builds a thin capsule behind each foot, from the foot's centre back towards the
+body's rear and down to the sole's level, counted as the foot's for the contact flag and the load
+sense. At 12, 20 and 30 mm (radius 2 mm, 30 mm also at 1 mm) the claws carried most of the
+stance contacts (583 claw contact moments against 285 on the spheres over 240 moments of the
+tetrapod at 20 mm), yet nothing turned directional. A push on the torso along its heading that
+moved the standing body 1 cm in a second was 0.60 of its weight forward and 0.55 back with
+claws, 0.60 and 0.50 without (in steps of 0.05; the push bends the legs before the feet slide).
+The tetrapod went 15.0 to 15.2 cm/s with claws, 14.9 without, and a shuffle (all hips back,
+then all forward, no lifting) went 2.3 to 3.3 cm/s with claws, 2.5 without. On a smooth rigid
+floor a slanted claw is one more Coulomb contact: a claw catches only on roughness the
+ground does not have. `CLAW_LENGTH` stays 0 (no claws, the body unchanged).
 
 The numbers are chosen, not measured. The model's digest (`MODEL_DIGEST`) names the body: a
 save continues only in the body it was made in.
@@ -154,10 +187,10 @@ Through the population code:
 
 Plus one floor-contact flag per foot: 424 inputs (52 coded readings of 8, and 8 flags).
 Under the `leg` and `pair` layouts a slot has 27 answers, every triple of a leg's three
-commands. `compass` and `ground` are options, as in learning-spider, and so is `up` (below).
-A newborn has all three unless its birth says otherwise (`--no-compass`, `--no-ground`,
-`--no-up`, `COMPASS=0` and so on, or the page's birth boxes): 480 inputs. That default is the
-owner's choice, unmeasured against the plain senses.
+commands. `compass` and `ground` are options, as in learning-spider, and so are `up` and `load` (below).
+A newborn has all four unless its birth says otherwise (`--no-compass`, `--no-ground`,
+`--no-up`, `--no-load`, `COMPASS=0` and so on, or the page's birth boxes): 544 inputs. That
+default is the owner's choice, unmeasured against the plain senses.
 
 `up` (`--up`/`--no-up`, the page's birth box) is a new option: the world's up in the torso's own frame,
 three readings (forward, left, up) through the same code, 24 inputs more. Standing reads
@@ -165,6 +198,17 @@ three readings (forward, left, up) through the same code, 24 inputs more. Standi
 tell the back from a side: roll is coded over ±90° and clamped, so a body on its back reads as
 one on its side, and which side flips each time the roll crosses ±180°. Unmeasured; a life
 saved before the option continues without it.
+
+`load` (`--load`/`--no-load`, the page's birth box) is a new option too: each foot's load, the
+normal force of its contacts with the floor as a share of the body's weight, eight readings
+through the same code over 0 to 0.5 (chosen: a foot of four carries a quarter, of two a half),
+64 inputs more. It is what a spider's slit sensilla read as strain in its legs: a foot that
+carries, one that only touches, one aloft, where the contact flag (which stays) reads all
+touching feet the same. Readings at birth on the flat (body `2bd499aae3fd2b8b`): standing on
+all eight after 40 holds the loads sum to 1.00, front to rear about 0.06, 0.11, 0.19, 0.15 per
+side; with four hips of a tetrapod lifted for 15 moments the four feet down carry 0.21, 0.30,
+0.11 and 0.38 (sum 0.99). MuJoCo's contact forces read, nothing chosen with them. Unmeasured as a
+sense; a life saved before the option continues without it.
 
 ## The reward (`spider/life.py`)
 
@@ -300,6 +344,340 @@ the owner's choice after live bodies stood on their heads, and taken back. The r
 
 The hint did not lower the head in 60,000 moments: one run at 0.01 held it down 79 % of the
 time, and the seeds spread from under 1 % to 79 %. Forward metres spread from −18 to 33.
+
+## The hills (`spider/body.py`, the page's arena)
+
+The world has five arenas (`--arena`, `ARENA` for the server; `flat` is the default and the
+founder's), learning-spider's three, `rough` and `rocks`: `flat` is MuJoCo's plane at z = 0, the world bit for bit as
+it was; `hills` is a fixed rolling terrain, the sum of four cosine waves of 1.3 to 3.1 m wavelength
+(`HILLS`, learning-spider's numbers, about ±6 cm); `steep` is the same waves at 2.5 times the
+amplitude (`STEEP_FACTOR`, about ±15 cm, slopes 0.16 in the median and up to 0.36), higher than
+learning-spider's 1.5, which a body that could not tilt needed; chosen on the owner's ask. A reading
+(2026-11-16, body `eab70bddbcdbbdda`, six places, 300 moments each): a body holding its joints
+stood at all six places at 1.5 and at three of six from 2.0 to 3.0, where on a crest the belly lies
+on the ground and the legs must lift it; under random commands it stayed upright throughout at
+every height. Here the terrain is a MuJoCo height field in the plane's place,
+the same name and friction, sampled every 5 cm (`TERRAIN_STEP`) over a 24 m square (`TERRAIN_HALF`
+12 m; the arena's rim, `ARENA_RADIUS`, is 10 m from the centre since 2026-11-16, 5 m before): the body
+tilts, slips, climbs and falls on it by MuJoCo's contacts, where learning-spider's body could not
+tilt. There is no slope force but gravity and no height sense; the brain meets the terrain through
+its joints, its feet's contacts, its tilt and its speed.
+
+`rough` is this project's own, added on the owner's ask (2026-11-16) after the claw probe above:
+level on the whole but grained, a fixed random height (a hash of the lattice node, the same in
+every life) every centimetre (`GRAIN_STEP`) up to 3 mm either way (`GRAIN_HEIGHT`), joined by the
+height field's flat triangles. The page draws it flat; the grain is too fine to see. A probe
+(scripted, outside any life, body `2bd499aae3fd2b8b`, the mean of three places of the grain; the
+measures of the claw probe):
+
+| ground | claws | push to move, forward / back (of the weight) | tetrapod | shuffle |
+| --- | --- | --- | --- | --- |
+| flat | none | 0.60 / 0.50 | 14.9 cm/s | 2.5 cm/s |
+| flat | 20 mm | 0.60 / 0.55 | 15.0 | 3.2 |
+| grain 1 cm, ±3 mm (`rough`) | none | 0.78 / 0.73 | 12.9 | 1.7 |
+| grain 1 cm, ±3 mm | 20 mm | 0.78 / 0.70 | 12.8 | 1.8 |
+| grain 1 cm, ±6 mm | none | 0.88 / 0.80 | 11.0 | 0.1 |
+| grain 1 cm, ±6 mm | 20 mm | 0.95 / 0.75 | 11.1 | 0.5 |
+| grain 2 cm, ±5 mm | none | 0.65 / 0.60 | 13.8 | 1.1 |
+| grain 2 cm, ±5 mm | 20 mm | 0.68 / 0.60 | 14.0 | 1.1 |
+
+`rocks` is this project's own too, added on the owner's ask (2026-11-16): level ground with
+rocks lying on it, angular, some pointed, some large. The plane is cut into cells 60 cm a side
+(`ROCK_CELL`); the rough ground's hash of the cell (the same in every life) says whether it holds a
+rock (65 in 100, `ROCK_SHARE`) and its shape. A rock is a convex block wholly inside a circle round
+its centre inside its cell: most are 2 to 8 cm high within 8 to 20 cm (`ROCK_HEIGHT`,
+`ROCK_RADIUS`), 15 in 100 boulders 8 to 18 cm high within 20 to 29 cm (`ROCK_BIG`,
+`ROCK_BIG_HEIGHT`, `ROCK_BIG_RADIUS`). Eight flanks (`ROCK_FACETS`), turned unevenly
+(`ROCK_JITTER`), rise from their own feet, 0.55 to 0.8 of the radius out (`ROCK_FOOT`), and a
+crown of eight upper facets between them falls from near the rock's height. A block's flanks rise
+1.5 to 4 per run (`ROCK_SLOPE`, 56 to 76 degrees), its crown 0.2 to 0.9 (`ROCK_CROWN`), and a
+top tilted down by up to half its height on one side cuts it (`ROCK_TILT`); a spike (30 in 100,
+`ROCK_SPIKE`) has flanks and crown steep enough to meet in a point set off the centre by up to
+0.15 of the radius (`ROCK_APEX`). Every rock is narrowed across an axis of its own to 0.55 to all
+of its length (`ROCK_STRETCH`). Over them lies a second lattice of cells 3 m a side (`ROCK_GIANT_CELL`), 40 in
+100 of them holding a giant of the same make (`ROCK_GIANT_SHARE`), 20 to 60 cm high within 0.5 to
+1.2 m of its centre (`ROCK_GIANT_HEIGHT`, `ROCK_GIANT_RADIUS`): taller than the torso rides and
+wider than the legs span, to be walked round, or climbed where it is low; the ground is the higher
+of the two lattices' rocks, and no giant's foot reaches within 70 cm of the origin. The page draws
+the giants on every second node of the field's lattice. Under all of them lies a third lattice of cells 26 m a side
+(`ROCK_PLATEAU_CELL`), starting 16 m west and 11 m south of the origin (`ROCK_PLATEAU_SHIFT`,
+chosen on 2026-11-16 to bring a plateau of rock beside the live body, then 23 recentres from its
+birthplace), six in ten of them raised (`ROCK_PLATEAU_SHARE`): a plateau with the
+same angular outline, 15 to 40 cm high (`ROCK_PLATEAU_HEIGHT`), its top level, reaching 4
+to 7 m from its centre on every side (`ROCK_PLATEAU_TOP`): at least 8 m across, nine times the
+legs' 0.9 m span. Ramps all round rise 0.3 to 0.5 m per metre (`ROCK_PLATEAU_SLOPE`; up to 32
+degrees across a plateau stretched to `ROCK_PLATEAU_STRETCH`), and the radius (8 to 12 m) is wide
+enough that no ramp is cut: higher ground for the body to climb. Half of them
+(`ROCK_PLATEAU_ROCKY`) are plateaus of rock: drawn in rock grey, with the small rocks, blocks,
+spikes and boulders lying on them as on the floor; the others are bare, no rock reaching their
+foot, and no giant reaches any plateau's. The ground is the plateau's height plus the rocks'. No plateau's foot reaches within 70 cm of the origin. Chosen, not
+measured: whether a body climbs the ramps is unread. No rock lies within 70 cm of the origin (`ROCK_CLEAR`), so a
+newborn stands on level ground. The field is sampled every centimetre (`ROCK_STEP`) so the edges
+stay sharp; the page draws each rock from the same hash on the same lattice, flat shaded, each in a
+grey of its own from dark basalt to pale limestone, cool or warm (the page's, not the world's). The numbers are chosen, not measured: the
+abdomen rides about 3.4 cm above the floor and a foot lifts to about 40 cm, so the low rocks pass
+under the belly, the high ones must be climbed and the boulders climbed or walked round. A probe
+(scripted tetrapod gait from the claw probe, outside any life, body `9314a7863d588419`, 3000
+moments from the origin along heading 0, before the giants were added):
+
+| ground | gait period | distance | upright | belly down | torso over a rock | highest rock under the torso |
+| --- | --- | --- | --- | --- | --- | --- |
+| flat | 10 | 2.75 m | 1.00 | 0.24 | 0 | 0 |
+| flat | 14 | 1.63 m | 1.00 | 0.25 | 0 | 0 |
+| `rocks` | 10 | 3.30 m | 1.00 | 0.80 | 0 | 0 |
+| `rocks` | 14 | 3.46 m | 1.00 | 0.56 | 0.05 | 1.1 cm |
+
+One path each; the rocks stop a gait or let it pass by where its feet land, not on average. An
+earlier shape of these rocks (half ellipsoids, before the facets, spikes and boulders) held the period
+10 gait at 0.51 m.
+
+The grain holds a standing body harder both ways and slows the scripted gait (its feet stumble
+on it), and kills the shuffle; the claws, on any grain tried, still give no grip one way more
+than the other. A ratchet would need a claw that gives way when dragged forward, a joint of its
+own, which the body has not.
+
+That claw was probed next (2026-11-16, `PAWL` in `spider/model.py`, off): a pawl. Each claw hangs
+on a hinge of its own at the foot's centre, across the body's fore-and-aft line, slanted back and
+down `PAWL_ANGLE` from the vertical against a stop and folding freely back and up (`PAWL_FOLD`),
+pressed to the stop by a weak passive spring (2e-5 N m at the stop: no muscle, no command, the
+brain does not know it). Its tip reaches 2 mm below the pad's sole and grips at 1.8; the pad (the
+foot sphere) slides at `PAD_MU` (both by geom priority over the floor's 0.8). Under a standing
+body's weight the claws fold about 0.35 rad and the pads carry; a foot slipping backward pushes
+its tip onto the stop and the claw bites, one drawn forward folds it. The probe's measures, plus
+how far the stance feet slid along the heading over the tetrapod's 600 moments (the mean of three
+places; half-cycle 6 only):
+
+| ground | foot | push to move, fwd / back | tetrapod | stance feet slid back / fwd | shuffle |
+| --- | --- | --- | --- | --- | --- |
+| flat | sphere 1.5 (the body) | 0.60 / 0.50 | 14.9 cm/s | 231 / 42 cm | 2.5 cm/s |
+| flat | pawl 0.5 rad, pad 0.3 | 0.40 / 0.35 | 13.8 | 100 / 590 | 15.0 |
+| flat | pawl 0.5 rad, pad 0.8 | 0.60 / 0.45 | 2.6 | 2139 / 256 | 4.4 |
+| flat | pawl 0.3 rad, pad 0.3 | 0.40 / 0.35 | 8.1 | 209 / 496 | 11.0 |
+| `rough` | sphere 1.5 | 0.78 / 0.73 | 12.9 | 437 / 23 | 1.7 |
+| `rough` | pawl 0.5 rad, pad 0.3 | 0.47 / 0.45 | 2.5 | 2027 / 329 | 8.8 |
+| `rough` | pawl 0.5 rad, pad 0.8 | 0.72 / 0.53 | 15.2 | 481 / 159 | 0.8 |
+| `rough` | pawl 0.3 rad, pad 0.3 | 0.47 / 0.38 | 1.8 | 1638 / 315 | 3.7 |
+
+The pawl is a ratchet: on the flat at 0.5 rad with a pad of 0.3 a body that only sweeps all its
+hips back and forth, never lifting a foot, goes 15.0 cm/s, six times the plain foot, and the stance
+feet of the tetrapod slid back less than half as far. It grips no harder against a push (the push
+bends the legs, and a folded claw leaves the slippery pad to carry), and the one scripted gait
+swings from 1.8 to 15.2 cm/s between variants, so it does not judge the variants; it says the
+pawl changes how this gait meets the floor, not that it walks better. What the ratchet pays most
+is the shuffle, a walk without steps. `PAWL` was turned on afterwards on the owner's choice
+(2026-11-16): the body is now `cf9ce740e2b88b70` (pawl 0.5 rad, pad 0.3), unmeasured in a life;
+`PAWL = False` builds `2bd499aae3fd2b8b` again.
+
+**A shorter tibia.** On the owner's choice (2026-11-16), after a live body under `low_pay` lifted
+its torso on one or two feet and slid, the tibia was shortened from 53 % to 45 % of each leg
+(`TIBIA_SHARE`): body `df58a9084a68f1c6`, the pawl kept. The knee's rest angle is solved again
+for the same ride height, so the tibia stands steeper (0.58..0.69 rad from the vertical against
+0.75..0.83). Readings on the plane, one run each, every joint commanded the same:
+
+| body | hold, 200 moments | knees to the low end | feet down, pressed | from the belly to 9 cm |
+| --- | --- | --- | --- | --- |
+| `cf9ce740e2b88b70`, tibia 53 % | 10.11 cm, 8 feet | 20.9 cm | 4 | 9 moments |
+| `df58a9084a68f1c6`, tibia 45 % | 10.35 cm, 8 feet | 17.8 cm | 4 | 9 moments |
+
+Both bodies press themselves off the belly in the same nine moments, so the knee was strong
+enough before; what changes is how high a pressed body stands and how steep the shin meets the
+floor. Unmeasured in a life.
+
+**Faster joints.** The servos' damping is their torque over a rate, so a stronger muscle is no
+faster when free: only the rate is. On the owner's ask (2026-11-16) the three rates were scaled
+by 2 and 3 on body `df58a9084a68f1c6` and probed on the plane, one run each:
+
+| rates | body | hip / knee to the end | belly to 9 cm | still on hold | shuffle, best | tetrapod, best (others) |
+| --- | --- | --- | --- | --- | --- | --- |
+| ×1 | `df58a9084a68f1c6` | 28 / 8 moments | 9 | yes | 11.7 cm/s | 6.2 at T 10 (0.1–4.4) |
+| ×2 | `9314a7863d588419` | 17 / 4 | 5 | yes | 13.9 | 8.7 at T 3 (2.4–6.1) |
+| ×3 | `9b19c327ff1f1968` | 8 / 3 | 4 | yes | 6.9 | 12.3 at T 3 (−0.7–3.4) |
+
+No rate set a holding body trembling (its height, the torso and the joints still to the reading's
+last digit). At ×3 the shuffle halves and the scripted gait goes only at its quickest beat, its
+feet restless; the scripted gait swings between beats as before and judges nothing. ×2 was taken
+on the owner's choice (`RATE_SCALE`): body `9314a7863d588419`, unmeasured in a life.
+
+**The pad on steep ground.** A live body on `steep` went about 1.2 cm/s against about 6 on the
+plane, and a pad at 0.3 holds by itself only up to about 17° (steep reaches 20°). So the pad was
+probed at 0.3 (body `9314a7863d588419`) against 0.8, the floor's (body `ec6d2d6a4b89e417`), on
+twelve places of steep sloping 10° or more (scripted gaits from the first six), one run each:
+
+| pad | held 200 moments: torso slides mean / max | steep tetrapod T 3 / 4 / 6 / 10 | steep shuffle T 3 / 6 / 10 | flat tetrapod, best | flat shuffle, best |
+| --- | --- | --- | --- | --- | --- |
+| 0.3 | 1.0 / 1.9 cm | 6.3 / 2.4 / 0.0 / 3.0 cm/s | 3.3 / 4.0 / 3.9 | 8.7 | 13.9 |
+| 0.8 | 0.9 / 2.0 cm | 5.9 / 3.5 / 2.7 / 2.2 | −0.9 / 0.5 / 1.8 | 3.3 | 3.2 |
+
+The pad does not slide on the slopes: a holding body stays within 2 cm either way (the claws and
+the stance carry it), and it stays upright everywhere. The grippier pad walks steep no better and
+takes the ratchet's work away: on the plane the shuffle falls from 13.9 to 3.2 cm/s and the
+tetrapod from 8.7 to 3.3. The pad stays at 0.3. The scripted gait at the quickest beat goes
+6.3 cm/s on steep, so the slow live body is not held back by the pad.
+
+**Long strides.** A live body on `hills` (body `9314a7863d588419`) stepped short: over 800
+moments its hips swept 0.14 to 0.60 rad of their 1.2, pushing back 84 % of the time and forward in
+pulses of a moment or two. So a long tetrapod stride was probed against the short gaits, body
+`9314a7863d588419`, 1,200 moments each, one place on flat and four on hills: the swing group lifts
+for U moments, swings its hips forward until they are `a` rad past the back stop, lowers for D
+moments, while the stance group pushes back; then the groups swap.
+
+| gait | hip span | flat | hills (mean of 4) |
+| --- | --- | --- | --- |
+| shuffle T 3 / 6 | 0.7 / 1.0 rad | 5.4 / 3.8 cm/s | 6.0 / 3.8 |
+| short tetrapod T 3 / 4 | 0.7 / 0.9 | 0.4 / 6.5 | 6.6 / 4.7 |
+| long tetrapod a 0.3, best U/D | 0.7–1.0 | 3.2 | 4.5 |
+| long tetrapod a 0.6, best U/D | 1.1–1.2 | 6.7 | 3.7 |
+| long tetrapod a 0.9, best U/D | 1.2 | 5.4 | 4.2 |
+| long tetrapod a 1.2, best U/D | 1.2 | 4.7 | 3.8 |
+
+The long stride is not faster: on flat its best (6.7 cm/s) matches the short tetrapod's (6.5),
+on hills the short gaits lead (6.6 against 4.5). The readings scatter widely from run to run and
+from place to place (the same short tetrapod at T 3 went 8.7 cm/s over 600 moments in the pad
+probe and 0.4 over 1,200 here; a scripted gait drifts and turns), so the table shows no gait clearly
+ahead, only that a long stride brings no gain the body would be paid for.
+
+**Where the push goes.** Over each stance (touchdown to liftoff) the foot's move over the ground
+was set against its move relative to the torso, both along the heading and across it (body
+`9314a7863d588419`, flat, 1,200 moments each). The torso goes 13 % (short tetrapod T 4) to 28 %
+(long, a 0.9) of the way the stance hips sweep would carry it if the feet held:
+
+| legs | short tetrapod T 4: push along / across | slides (of the push) | long tetrapod a 0.9: slides |
+| --- | --- | --- | --- |
+| 1 (front) | −11.4 / ±3.4 m | 82–84 %, backward | 51 % |
+| 2 | −12.0 / ∓2.5 m | 78–120 %, backward | 43–44 % |
+| 3 | −5.0 / ±5.2 m | 91–99 %, mostly across | 87–91 % |
+| 4 (rear) | −2.9 / ±10.4 m | 91–102 %, across | 88–90 % |
+
+The rear legs (3 and 4) push mostly sideways and their feet slide that way almost as far as they
+push: they carry the body but hardly drive it, and the two sides cancel. The front legs (1 and 2)
+push along the heading but their feet slide back most of that way in short steps and about half
+of it in long ones, although backward is the way the claw holds. (The shuffle, which never lifts,
+is a ratchet by design: its feet slide forward on the return, so its shares are not comparable.)
+
+**What the feet carry.** The floor's push on each pad and each claw, as a share of the body's
+weight (0.30 N), mean over the moments a foot is down (body `9314a7863d588419`, flat):
+
+| legs | standing, all held: pad + claw | short tetrapod T 4: pad + claw · claw down | long a 0.9: pad + claw · claw down | claw down while sliding back (short / long) |
+| --- | --- | --- | --- | --- |
+| 1 | 2.0 + 2.8 % | 28 + 12 % · 71 % | 18 + 11 % · 100 % | 60–65 / 99–100 % |
+| 2 | 7.7 + 2.8 % | 27 + 16 % · 88 % | 4 + 21 % · 100 % | 82 / 100 % |
+| 3 | 16.6 + 2.8 % | 27 + 16 % · 76 % | 22 + 15 % · 71 % | 99–100 / 100 % |
+| 4 | 12.6 + 2.7 % | 36 + 7 % · 46 % | 29 + 5 % · 33–38 % | 90–100 / 5–6 % |
+
+The centre of mass sits 11.8 cm behind the torso's origin; a standing body rests on its back
+legs and its front feet carry 5 % each. Walking on four feet the front feet carry 25 to 43 %,
+and the claws are down while the feet slide back: the front feet slide with their claws on the
+floor. In the short gait the pad (μ 0.3) carries about two thirds of a front foot's load and the
+claw (μ 1.8) a third. The fourth legs' claws are down a third to half of the time, and in the long
+gait almost never while their feet slide back.
+
+**A deeper claw.** So the claw's tip was probed further below the pad's sole (`PAWL_REACH`, 2 mm
+in body `9314a7863d588419`): 4 mm (body `710d3b9cadf7776c`), 6 mm (`9a8ea5dc9c381f7e`) and
+9 mm (`db165601ce18cd8a`), the claw's share of the feet's load over 1,200 moments on flat and the
+scripted gaits' speed (cm/s, flat / mean of four places on hills):
+
+| reach | claw's share, legs 1/2/3/4, short T 4 | shuffle T 3 | short tetrapod T 3 | short tetrapod T 4 | long a 0.9 |
+| --- | --- | --- | --- | --- | --- |
+| 2 mm | 30 / 37 / 38 / 17 % | 5.4 / 6.0 | 0.4 / 6.6 | 6.5 / 4.7 | 5.4 / 4.2 |
+| 4 mm | 24 / 33 / 21 / 14 % | 3.6 / 3.1 | 5.6 / 2.8 | 1.2 / 2.5 | 0.2 / 4.8 |
+| 6 mm | 21 / 21 / 12 / 10 % | 3.7 / 2.6 | 2.7 / 4.7 | 4.7 / 4.1 | 2.5 / 4.9 |
+| 9 mm | 13 / 13 / 12 / 7 % | 2.5 / 2.3 | 0.5 / 3.4 | 1.5 / 2.0 | 3.0 / 1.9 |
+
+A deeper claw carries less, not more: the weight on its tip, behind the hinge, folds it until the
+pad is down, and the further it reaches the further it folds back up. The gaits went no faster
+(on hills slower at every depth). The reach stays at 2 mm.
+
+**A steeper claw.** With its tip nearer under the hinge the weight has less lever to fold it, so
+`PAWL_ANGLE` (0.5 rad from the vertical in body `9314a7863d588419`) was probed at 0.3 (body
+`c342c8103da8ab0d`), 0.15 (`2c4d5b8e66eb5662`) and 0.05 (`a9a046d3ff2ac971`), as the reach was,
+with the push on the torso (in body weights) that moves a holding body 1 cm in a second:
+
+| angle | claw's share, legs 1/2/3/4, short T 4 | held: slips forward / back | shuffle T 3 | short tetrapod T 3 | short tetrapod T 4 | long a 0.9 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0.5 | 30 / 37 / 38 / 17 % | 0.40 / 0.40 W | 5.4 / 6.0 | 0.4 / 6.6 | 6.5 / 4.7 | 5.4 / 4.2 |
+| 0.3 | 33 / 53 / 76 / 54 % | 0.40 / 0.35 | 1.0 / 2.5 | 3.9 / 1.8 | 4.9 / 4.3 | 2.9 / 1.0 |
+| 0.15 | 46 / 47 / 80 / 62 % | 0.40 / 0.30 | 4.5 / 0.6 | 2.7 / 1.1 | 6.2 / 2.5 | 0.7 / 4.8 |
+| 0.05 | 53 / 48 / 61 / 74 % | 0.40 / 0.30 | 1.0 / 0.3 | 0.4 / 5.3 | 5.5 / 1.7 | 8.0 / 4.0 |
+
+The steeper claw carries the load (half to three quarters of it instead of a fifth to a third),
+but a held body slips backward under a smaller push, not a larger one, and the gaits go no
+faster: on hills every steeper claw is slower in the mean of the six gaits, and the shuffle, the
+ratchet's own gait, loses most. The angle stays at 0.5.
+
+**Another splay.** The rear legs push mostly sideways because they point back (`HIP_SPLAY`,
+rad from straight out, + forward: 0.8, 0.3, −0.3, −0.8 in body `9314a7863d588419`). Four other
+splays were probed as above, with each pair's stance push across the heading (share of the push,
+short tetrapod T 4, flat) and how far the planted feet slide over the ground against how far they
+push (summed per stance, both directions):
+
+| splay I/II/III/IV | body | push across, legs 1/2/3/4 | feet slide, legs 1/2/3/4 | six gaits' mean, flat / hills |
+| --- | --- | --- | --- | --- |
+| 0.8 / 0.3 / −0.3 / −0.8 | `9314a7863d588419` | 23 / 17 / 51 / 78 % | 99 / 112 / 134 / 148 % | 4.7 / 4.5 cm/s |
+| 0.8 / 0.3 / −0.15 / −0.4 | `aa64132fac030459` | 19 / 17 / 39 / 12 % | 75 / 100 / 101 / 100 % | 2.6 / 1.6 |
+| 0.8 / 0.3 / 0 / −0.2 | `d516d86aa18a3f50` | 30 / 10 / 27 / 34 % | 53 / 42 / 65 / 69 % | 0.8 / 1.4 |
+| 0.5 / 0.2 / −0.2 / −0.5 | `af78a3c7c6f0743d` | 11 / 21 / 41 / 35 % | 50 / 34 / 66 / 78 % | 2.0 / 2.0 |
+| 0.3 / 0.1 / −0.1 / −0.3 | `49a5a140531b0078` | 48 / 25 / 38 / 6 % | 93 / 58 / 77 / 75 % | 0.5 / 0.6 |
+
+Legs nearer straight out push less sideways and their feet slide less, but every other splay
+walked the scripted gaits slower, on flat and on hills; all stood at 10.3 to 10.4 cm and stayed
+upright. Less slip did not become speed in these gaits (they were written for this body, and a
+learner might use another splay otherwise; unmeasured). The splay stays.
+
+The body is the same: `MODEL_DIGEST` is `model.py`'s body on the plane, and the arena is named
+beside it in the save and in every reading (the nursery's readings carry the law, the arena among
+it). A recentre on a terrain moves the ground with the body, by whole grid steps (the field's
+`offset`), so the feet stand on the same ground before and after it, and a save carries the
+offset. The arena is the world's, not a hint: it is set, shown, saved and counted with the law (a
+change live, the page's arena select, is a law change, and the life a schedule). A ground laid
+under a living body keeps its pose, velocities, setpoints and time and raises it just out of the
+new ground if it would stand in it, so it drops at most the terrain's height; nothing else is
+reset. A save from before the arena stands on flat ground. On the terrains the foot heights (the
+held-up-leg charge's weight) and the torso's height (the low hint and the readings) are read above
+the ground under them. A moment costs about 1.9 ms of physics on the hills against 1.2 on the flat
+(a reading, random commands, the development machine). Unmeasured on this body.
+
+## The entropy, live (`spider/life.py`, the page's "brain, live")
+
+The brain's `entropy` gene can be retuned on the living brain (the control `entropy`, the page's
+"brain, live" field), through Cadence's `brain.retune(actor_entropy=...)`: parameters, traces,
+memories and the pending act are kept, and the new weight applies from the brain's next outcome
+on. It was added on the owner's choice after a live body (seed 0, entropy 0.03, `pair`, 3.6
+million moments) walked with one diagonal pair (left 1 and right 2) held up for good: that slot's
+nine answers that lower the hip lift sat near −0.05 against about 1.0 for the rest, a hold the
+held-up-leg charge could not reach, since an answer never taken is never credited.
+
+It is a gene, not the law, and not a birth: the birth's genes stay what the brain was composed
+with, and a brain retuned is a schedule of genes, not a brain born so. Every change is noted,
+counted (`gene_changes`), shown on the page's brain line and saved with the life; the brain's own
+file carries the value, so a load continues under it, and a reset starts the newborn's genes
+again. Unmeasured on this body.
+
+Turned on from 0, the entropy met an act sampled at 0, which keeps no policy for the entropy term:
+Cadence refused that act's outcome at every retry, and a live life (moment 4,487,148 on) stood in
+`refused` for 24,319 moments while its owed reward grew. The brain wrapper (`spider/brain.py`) now
+delivers that one outcome under the entropy it was sampled at, through Cadence's `learn`, and acts
+at the new entropy; the arousal does not hear that one outcome. A save made while refused loads and
+continues the same way.
+
+## The need, live (`spider/life.py`, the page's "brain, live")
+
+The arousal gene `arousal.need` (the reward per moment the body requires) can be retuned on the
+living brain too (the control `need`, the page's "brain, live" field), through Cadence's
+`brain.retune(arousal_need=...)`: parameters, traces, memories, what the brain is used to and the
+pending act are kept, and the new need applies from the brain's next outcome on. A calm brain
+(routine) answers greedily and learns nothing; while the recent reward falls short of the need, the
+unmet share is a want that holds the brain aroused, sampling and learning. The control takes 0
+(off: only a reward below the brain's own usual wakes it) up to the cap, 0.5.
+
+It was added on the owner's choice after a live body (seed 0, `joint`, entropy 0.04, flat, about
+1.4 million moments) stood nearly still in routine: in a sample of its moments, routine held 43 %
+of them, its commands changed between moments 0 % of the time and its forward speed's median was
+0, against 10.9 cm/s and 60 % changed commands while aroused (readings, not a measurement of the
+control). A need raised to near the income of a walk keeps it from settling into that stand.
+
+Like the entropy it is a gene changed in the life, not the law and not a birth: noted, counted in
+the same `gene_changes`, shown on the brain line and saved with the life; the brain's file carries
+the value, and a reset starts the newborn's genes again. Unmeasured on this body.
 
 ## Running
 

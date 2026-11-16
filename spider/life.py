@@ -36,8 +36,9 @@ import numpy as np
 
 import mujoco
 
-from .body import Spider
-from .model import (ABDOMEN, ABDOMEN_POS, BODY, DT, FOOT_RADIUS, HEAD_RADIUS, HEAD_X, HEIGHT, HIP_X, HIP_Y, JOINTS, LEG_RADIUS, LEGS, LEG_NAMES,
+from .body import ARENAS, TERRAINS, Spider
+from . import body as _body
+from .model import (ABDOMEN, ABDOMEN_POS, BODY, CLAW_RADIUS, DT, FOOT_RADIUS, HEAD_RADIUS, HEAD_X, HEIGHT, HIP_X, HIP_Y, JOINTS, LEG_RADIUS, LEGS, LEG_NAMES,
                     MODEL_DIGEST, PER_SIDE, SIDE, WAIST, WAIST_RADIUS)
 from .brain import (DEFAULT_LAYOUT, LAYOUTS, FrozenPolicy, RandomPolicy, SpiderBrain, backend_of, fitted, gene_words,
                     genes_from_text, make_policy)
@@ -132,6 +133,10 @@ STRICT = False          # the strict course: under a course, the progress term i
                         # (charged as --backward-pay says), nose first off the course pays little. Not a hint:
                         # the same outcome measured twice, the lesser paid. --strict / STRICT set it; it needs
                         # a course (README, "The strict course")
+ARENA = "flat"          # the ground: flat (the founder, MuJoCo's plane z = 0), hills (a fixed rolling terrain of four
+                        # long waves, about ±6 cm, learning-spider's) or steep (the same 2.5 times as high, about ±15 cm); the
+                        # world's, not a hint: set, shown, saved and counted with the law; --arena / ARENA set it
+                        # (README, "The hills"). Unmeasured on this body
 BLOCK = 100             # moments per statistics block
 BLOCKS_KEPT = 60
 FORMAT = "learning-physical-spider/1"
@@ -236,7 +241,7 @@ def _replace(path: Path, write) -> None:
 
 LAW_KEYS = ("stance_pay", "yaw_pay", "window", "high_water", "old_ground", "pay_per_metre", "backward_pay", "course",
             "strict", "upright_pay", "stance_upright", "torque_pay", "stance_floor", "stand_pay", "carry", "idle_leg_pay", "idle_moments", "idle_height",
-            "low_pay", "head_pay", "touchdown_pay")
+            "low_pay", "head_pay", "touchdown_pay", "arena")
 
 
 def checked_course(course: Any) -> float | None:
@@ -267,8 +272,10 @@ def checked_law(*, stance_pay: Any = STANCE_PAY, yaw_pay: Any = YAW_PAY, window:
                 carry: Any = CARRY, idle_leg_pay: Any = IDLE_LEG_PAY,
                 idle_moments: Any = IDLE_MOMENTS, idle_height: Any = IDLE_HEIGHT,
                 low_pay: Any = LOW_PAY, head_pay: Any = HEAD_PAY,
-                touchdown_pay: Any = TOUCHDOWN_PAY) -> dict[str, Any]:
-    """The law's twenty-one settings, typed and checked; a ValueError names what is wrong."""
+                touchdown_pay: Any = TOUCHDOWN_PAY, arena: Any = ARENA) -> dict[str, Any]:
+    """The law's twenty-two settings, typed and checked; a ValueError names what is wrong."""
+    if arena not in ARENAS:
+        raise ValueError(f"the arena is one of {', '.join(ARENAS)}, not {arena!r}")
     high_water = bool(high_water)
     if not 0.0 <= float(old_ground) <= 1.0:
         raise ValueError(f"old ground is a share of the pay, 0 to 1, not {old_ground}")
@@ -312,7 +319,7 @@ def checked_law(*, stance_pay: Any = STANCE_PAY, yaw_pay: Any = YAW_PAY, window:
             "stance_floor": int(float(stance_floor)), "stand_pay": float(stand_pay), "carry": bool(carry),
             "idle_leg_pay": float(idle_leg_pay), "idle_moments": int(float(idle_moments)),
             "idle_height": float(idle_height), "low_pay": float(low_pay),
-            "head_pay": float(head_pay), "touchdown_pay": float(touchdown_pay)}
+            "head_pay": float(head_pay), "touchdown_pay": float(touchdown_pay), "arena": str(arena)}
 
 
 def law_text(law: dict[str, Any]) -> str:
@@ -351,6 +358,8 @@ def law_text(law: dict[str, Any]) -> str:
         parts.append(f"torque {law['torque_pay']:g}")
     if law["yaw_pay"]:
         parts.append(f"yaw {law['yaw_pay']:g}")
+    if law.get("arena", ARENA) != "flat":
+        parts.append(law["arena"])
     return " · ".join(parts)
 
 
@@ -390,6 +399,7 @@ class Life:
         low_pay: float = LOW_PAY,
         head_pay: float = HEAD_PAY,
         touchdown_pay: float = TOUCHDOWN_PAY,
+        arena: str = ARENA,
     ) -> None:
         self.name = name                        # the file stem under runs/
         self._take_law(checked_law(stance_pay=stance_pay, yaw_pay=yaw_pay, window=window, high_water=high_water,
@@ -399,9 +409,10 @@ class Life:
                                    stance_floor=stance_floor, stand_pay=stand_pay, carry=carry,
                                    idle_leg_pay=idle_leg_pay, idle_moments=idle_moments,
                                    idle_height=idle_height, low_pay=low_pay,
-                                   head_pay=head_pay, touchdown_pay=touchdown_pay))
+                                   head_pay=head_pay, touchdown_pay=touchdown_pay, arena=arena))
         self.mark = 0.0                         # the farthest paid distance reached: the high-water mark
         self.law_changes: list[dict[str, Any]] = []   # every live change of the law, moment and law (a schedule)
+        self.gene_changes: list[dict[str, Any]] = []  # every live retune of the brain's entropy or need, moment and value
         self.seed = int(seed)
         self.genes = genes
         self.backend = backend
@@ -409,7 +420,7 @@ class Life:
         self.runs = Path(runs)
         self.pace = float(pace)                 # moments per second; 0 = as fast as possible
         self.rate = 0.0                         # moments a second the loop actually makes, smoothed
-        self.body = Spider()                    # the one body, the model's; its physics is MuJoCo's
+        self.body = Spider(self.arena)          # the one body, the model's, on the arena's ground; its physics is MuJoCo's
         if layout not in LAYOUTS:
             raise ValueError(f"layout must be one of {LAYOUTS}, not {layout!r}")
         self.layout = str(layout)               # how the brain's answer is read, a slot per joint or per leg; the
@@ -467,6 +478,9 @@ class Life:
         self.head_pay = law["head_pay"]       # 0 switches the nose-down hint off
         self.touchdown_pay = law["touchdown_pay"]   # 0 switches the set-down hint off
         self.low_pay = law["low_pay"]         # 0 switches the ride-height hint off
+        self.arena = law["arena"]               # the ground: flat, hills, steep, rough or rocks; laid under the living body
+        if hasattr(self, "body"):
+            self.body.set_arena(self.arena)
         self.window = law["window"]
         kept = list(getattr(self, "_progress", []))[-self.window:]
         self._progress: deque[float] = deque(kept, maxlen=self.window)   # the last window moments' progress
@@ -474,7 +488,8 @@ class Life:
         self._nose: deque[float] = deque(nose, maxlen=self.window)   # the same moments' progress along the nose (the strict course)
 
     def law(self) -> dict[str, Any]:
-        """The reward law this life is paid under, the twenty-one settings the flags set."""
+        """The reward law this life is paid under, the twenty-two settings the flags set (the
+        arena among them: the world's ground, which the life is lived on and measured on)."""
         return {"stance_pay": self.stance_pay, "yaw_pay": self.yaw_pay, "window": self.window,
                 "high_water": self.high_water, "old_ground": self.old_ground,
                 "pay_per_metre": self.pay_per_metre, "backward_pay": self.backward_pay, "course": self.course,
@@ -483,7 +498,7 @@ class Life:
                 "stand_pay": self.stand_pay, "carry": self.carry,
                 "idle_leg_pay": self.idle_leg_pay, "idle_moments": self.idle_moments,
                 "idle_height": self.idle_height, "low_pay": self.low_pay,
-                "head_pay": self.head_pay, "touchdown_pay": self.touchdown_pay}
+                "head_pay": self.head_pay, "touchdown_pay": self.touchdown_pay, "arena": self.arena}
 
     def _paid_distance(self) -> float:
         """The distance the progress term is measured on: along the course under the course law,
@@ -523,6 +538,75 @@ class Life:
                                   "where they meet it every act pays the same and nothing is learned from the difference")
             self.latest = self.snapshot(None)
         return {"law": law, "changed": True, "worst_charge": round(worst_charge(law), 4)}
+
+    # --- the brain's entropy, live -----------------------------------------------------------
+
+    def entropy(self) -> float | None:
+        """The weight of the policy's entropy in the living brain's actor step, as it is now
+        (born with the gene ``entropy``, or retuned since); None without a brain."""
+        brain = self._live_brain()
+        return None if brain is None else float(brain.brain.basal_ganglia.config.entropy)
+
+    def set_entropy(self, value: Any) -> dict[str, Any]:
+        """Retune the living brain's ``actor_entropy`` from its next outcome on (Cadence's
+        ``brain.retune``: parameters, traces, memories and the pending act are kept). A gene the
+        brain was born with, changed in its life: a brain retuned is a schedule of genes, not a
+        brain born so. Every change is noted, counted, shown and saved with the life; the brain's
+        file carries the value itself, so a load continues under it."""
+        try:
+            entropy = float(value)
+        except (TypeError, ValueError):
+            raise ValueError("entropy is a number from 0 to 1") from None
+        if not math.isfinite(entropy) or not 0.0 <= entropy <= 1.0:
+            raise ValueError("entropy is a number from 0 to 1")
+        with self.lock:
+            brain = self._live_brain()
+            if brain is None:
+                raise ValueError("no brain in this life to retune")
+            was = self.entropy()
+            if entropy == was:
+                return {"entropy": entropy, "changed": False}
+            brain.brain.retune(actor_entropy=entropy)
+            self.gene_changes.append({"moment": self.moments, "entropy": entropy})
+            self.notes.append(f"entropy changed at moment {self.moments}: {was:g} to {entropy:g} "
+                              f"(gene change {len(self.gene_changes)}: this brain is a schedule of genes, not one born so)")
+            self.latest = self.snapshot(None)
+        return {"entropy": entropy, "changed": True, "was": was}
+
+    # --- the brain's need, live ----------------------------------------------------------------
+
+    def need(self) -> float | None:
+        """The reward per moment the living brain's arousal holds its body to need (Cadence's
+        ``arousal_need``: the unmet share of it is a want, and a want keeps the brain aroused,
+        sampling and learning), as it is now: born with the gene ``arousal.need`` or retuned
+        since; None without a brain or with a brain composed without arousal."""
+        brain = self._live_brain()
+        arousal = None if brain is None else brain.brain.arousal
+        return None if arousal is None else float(arousal.config.need)
+
+    def set_need(self, value: Any) -> dict[str, Any]:
+        """Retune the living brain's ``arousal_need`` from its next outcome on (Cadence's
+        ``brain.retune``: parameters, traces, memories, what the brain is used to and the pending
+        act are kept). A gene changed in its life, as the entropy is: noted, counted, shown and
+        saved with the life, and the brain's file carries the value itself."""
+        try:
+            need = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"need is a number from 0 to {PROGRESS_CAP:g}") from None
+        if not math.isfinite(need) or not 0.0 <= need <= PROGRESS_CAP:
+            raise ValueError(f"need is a number from 0 to {PROGRESS_CAP:g} (the cap: a moment pays no more)")
+        with self.lock:
+            was = self.need()
+            if was is None:
+                raise ValueError("no aroused brain in this life to retune")
+            if need == was:
+                return {"need": need, "changed": False}
+            self._live_brain().brain.retune(arousal_need=need)
+            self.gene_changes.append({"moment": self.moments, "need": need})
+            self.notes.append(f"need changed at moment {self.moments}: {was:g} to {need:g} "
+                              f"(gene change {len(self.gene_changes)}: this brain is a schedule of genes, not one born so)")
+            self.latest = self.snapshot(None)
+        return {"need": need, "changed": True, "was": was}
 
     # --- one moment -----------------------------------------------------------------------
 
@@ -581,7 +665,7 @@ class Life:
                               self.backward_pay, outcome["upright"], self.upright_pay,
                               outcome["effort"], self.torque_pay, self.stance_floor,
                               outcome["belly"], self.stand_pay, self.carry, idle, self.idle_leg_pay,
-                              low_share(self.body.z), self.low_pay, outcome["head"], self.head_pay,
+                              low_share(self.body.height), self.low_pay, outcome["head"], self.head_pay,
                               touchdowns, self.touchdown_pay)
             self.reward = capped(terms)
             self._count_fallen(outcome["upright"], was_upright, upright, outcome["progress"])
@@ -593,7 +677,7 @@ class Life:
             if upright:
                 pitch = self.body.tilt()[1]
                 self.pitch_upright_sum += pitch
-                self.height_upright_sum += self.body.z
+                self.height_upright_sum += self.body.height
                 if outcome["head"]:
                     self.head_pitch_sum += pitch
             self.turned += abs(outcome["turn"])
@@ -788,6 +872,10 @@ class Life:
                 if not isinstance(value, dict):
                     raise ValueError("law takes an object of the settings to change, e.g. {\"high_water\": true}")
                 return {"ok": True, **self.set_law(value)}
+            elif op == "entropy":
+                return {"ok": True, **self.set_entropy(value)}
+            elif op == "need":
+                return {"ok": True, **self.set_need(value)}
             elif op == "policy":
                 return {"ok": True, **self.switch(str(value))}
             elif op == "pace":
@@ -883,6 +971,7 @@ class Life:
                 "mark": self.mark,
                 "law": self.law(),
                 "law_changes": list(self.law_changes),
+                "gene_changes": list(self.gene_changes),
                 "turned": self.turned,
                 "upright_moments": self.upright_moments,
                 "falls": self.falls,
@@ -920,7 +1009,8 @@ class Life:
                 if "senses" in state:
                     saved_senses = Senses(per=int(state["senses"]["per"]), compass=bool(state["senses"]["compass"]),
                                           ground=bool(state["senses"]["ground"]),
-                                          up=bool(state["senses"].get("up", False)))   # saved before the up sense: without it
+                                          up=bool(state["senses"].get("up", False)),   # saved before the up sense: without it
+                                          load=bool(state["senses"].get("load", False)))   # and before the load sense
                     if saved_senses.options() != self.senses.options():
                         self.notes.append(f"saved with {saved_senses.inputs} inputs" + saved_senses.words()
                                           + f", asked for {self.senses.inputs}: the saved life keeps its own")
@@ -949,6 +1039,7 @@ class Life:
                     self.notes.append(f"saved under the law {law_text(saved)}, asked for {law_text(self.law())}: the saved life keeps its own")
                     self._take_law(saved)
                 self.law_changes = list(state["law_changes"])
+                self.gene_changes = list(state.get("gene_changes", []))   # saved before the live entropy: none
                 self.turned = float(state["turned"])
                 self.upright_moments = int(state["upright_moments"])
                 self.falls = int(state["falls"])
@@ -973,7 +1064,7 @@ class Life:
                 # the brain's pending command is known, its outcome is not: it reads as an
                 # observed zero at the next moment, which is a break in custody, reported
                 self.reward = None
-                self.body = Spider()
+                self.body = Spider(self.arena)
                 self.aloft = [0] * LEGS
                 custody = "broken: no sidecar, the pending outcome is lost"
                 self.notes.append(custody)
@@ -995,9 +1086,9 @@ class Life:
         they are set here and nowhere else. The law is the life's and stays as it is; under
         the course law the distance along the course and the mark start at zero."""
         birth = dict(birth or {})
-        unknown = sorted(set(birth) - {"seed", "genes", "layout", "compass", "ground", "up"})
+        unknown = sorted(set(birth) - {"seed", "genes", "layout", "compass", "ground", "up", "load"})
         if unknown:
-            raise ValueError(f"a birth names seed, genes, layout, compass, ground and up, not {', '.join(unknown)}")
+            raise ValueError(f"a birth names seed, genes, layout, compass, ground, up and load, not {', '.join(unknown)}")
         seed = int(birth.get("seed", self.seed))
         genes = birth.get("genes", self.genes)
         if isinstance(genes, str):
@@ -1010,8 +1101,9 @@ class Life:
         compass = bool(birth.get("compass", self.senses.compass))
         ground = bool(birth.get("ground", self.senses.ground))
         up = bool(birth.get("up", self.senses.up))
-        senses = self.senses if (compass, ground, up) == (self.senses.compass, self.senses.ground, self.senses.up) \
-            else Senses(per=self.senses.per, compass=compass, ground=ground, up=up)
+        load = bool(birth.get("load", self.senses.load))
+        senses = self.senses if (compass, ground, up, load) == (self.senses.compass, self.senses.ground, self.senses.up, self.senses.load) \
+            else Senses(per=self.senses.per, compass=compass, ground=ground, up=up, load=load)
         newborn = make_policy("brain", seed, None, genes, self.backend, inputs=senses.inputs, layout=layout)   # composed before the old life ends
         with self.lock:
             was = self.moments
@@ -1021,7 +1113,7 @@ class Life:
             self.seed, self.genes, self.senses, self.layout = seed, genes, senses, layout
             self.policy = newborn
             self._brain = None
-            self.body = Spider()
+            self.body = Spider(self.arena)
             self.reward = None
             self.moments = 0
             self.distance_forward = 0.0
@@ -1040,6 +1132,7 @@ class Life:
             self._progress.clear()
             self._nose.clear()
             self.law_changes = []
+            self.gene_changes = []
             self._last_save = time.monotonic()
             self.last_save_at = None
             self.loaded_from = None
@@ -1049,7 +1142,7 @@ class Life:
             self.notes = [f"reset after {was} moments: a newborn brain of {born}"]
             self.latest = self.snapshot(None)
         return {"reset": True, "moments_before": was, "seed": self.seed, "genes": genes or {}, "layout": self.layout,
-                "compass": compass, "ground": ground, "up": up}
+                "compass": compass, "ground": ground, "up": up, "load": load}
 
     def _maybe_autosave(self) -> None:
         if self.autosave_minutes <= 0 or not isinstance(self.policy, SpiderBrain):
@@ -1072,6 +1165,7 @@ class Life:
             "compass": self.senses.compass,
             "ground": self.senses.ground,
             "up": self.senses.up,
+            "load": self.senses.load,
             "input_names": self.senses.input_names(),
             "joints": JOINTS,
             "legs": LEGS,
@@ -1082,12 +1176,21 @@ class Life:
             "shape": {"body": list(BODY), "head_x": HEAD_X, "head_radius": HEAD_RADIUS,
                       "abdomen": list(ABDOMEN), "abdomen_pos": list(ABDOMEN_POS),
                       "waist": [list(WAIST[0]), list(WAIST[1])], "waist_radius": WAIST_RADIUS,
-                      "leg_radius": LEG_RADIUS, "foot_radius": FOOT_RADIUS},
+                      "leg_radius": LEG_RADIUS, "foot_radius": FOOT_RADIUS, "claw_radius": CLAW_RADIUS},
             "reward": {**self.law(), "cap": PROGRESS_CAP, "mark": round(self.mark, 4),
                        "worst_charge": round(worst_charge(self.law()), 4)},
             "upright": UPRIGHT,
+            # the terrains' waves (wavelength, direction, amplitude, phase): the page draws the
+            # server's ground, laid around the pose's offset, never one of its own
+            "terrains": {name: [list(w) for w in waves] for name, waves in TERRAINS.items()},
+            # the rocks' law (spider/body.py's rocks): the page draws the same rocks from the same hash
+            "rocks": {name.lower()[5:]: (list(v) if isinstance(v, tuple) else v)
+                      for name, v in vars(_body).items() if name.startswith("ROCK_")},
             "law_changes": list(self.law_changes),
             "genes": dict(self.genes or {}),
+            "entropy": self.entropy(),           # the living brain's entropy now: the gene, or its live retune
+            "need": self.need(),                 # the living brain's arousal need now: the gene, or its live retune
+            "gene_changes": list(self.gene_changes),
             "brain": brain.describe() if brain is not None else None,
             "control": self.policy.describe() if self.policy is not brain else None,
             "runs": str(self.runs),

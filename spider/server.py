@@ -89,6 +89,13 @@ def make_app(life: Life, static: Path = STATIC) -> web.Application:
             app[SOCKETS].discard(ws)
         return ws
 
+    async def revalidate(request: web.Request, response: web.StreamResponse) -> None:
+        # the page and its scripts are asked for again on every load (a 304 when unchanged), so a
+        # restarted server's page never runs beside a script the browser kept from before
+        if request.path == "/" or request.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "no-cache"
+
+    app.on_response_prepare.append(revalidate)
     app.router.add_get("/", index)
     app.router.add_get("/api/state", state)
     app.router.add_get("/api/describe", describe)

@@ -26,7 +26,7 @@ controls.enableDamping = true;
 controls.minPolarAngle = 1.15;                        // horizontal rotation only
 controls.maxPolarAngle = 1.15;
 controls.minDistance = 0.6;
-controls.maxDistance = 12;                            // far enough to see the whole arena, its rim 5 m from the centre
+controls.maxDistance = 24;                            // far enough to see the whole arena, its rim 10 m from the centre
 // The fog begins beyond the spider at every distance, so zooming out shows the arena and not a haze.
 function fogFor(r) { scene.fog.near = r + 3; scene.fog.far = r + 11; }
 fogFor(camera.position.length());
@@ -57,21 +57,63 @@ sun.shadow.camera.right = sun.shadow.camera.top = 3;
 scene.add(sun);
 scene.add(sun.target);
 
-// The floor is MuJoCo's plane at z = 0: flat, the only ground this world has.
 const GROUND_COLOUR = '#1b2230';                      // the page's own; the view panel changes it, for this browser only
-const ground = new THREE.Mesh(new THREE.CircleGeometry(5.5, 160), new THREE.MeshStandardMaterial({ color: GROUND_COLOUR, roughness: 1 }));
+// The ground's height, the body's ground_height: 0 on the flat arena (MuJoCo's plane), the sum of
+// the server's waves (wavelength, direction, amplitude, phase) on the hills and the steep hills,
+// read at the drawing's point plus the pose's offset (a recentre moves the ground with the body).
+// The page draws the server's terrain; it never has one of its own.
+let waves = [], offset = [0, 0];
+let plateaus = [];                                     // the rocks arena's raised ground, in the terrain's frame
+function setArena(name, terrains, at) {
+  waves = ((terrains || {})[name] || []).map(([w, d, a, ph]) => [2 * Math.PI / w * Math.cos(d), 2 * Math.PI / w * Math.sin(d), a, ph]);
+  offset = at || [0, 0];
+  const law = name === 'rocks' && described && described.rocks, reach = GROUND_RADIUS;
+  plateaus = [];
+  if (law)
+    for (let i = Math.floor((offset[0] - reach - law.plateau_shift[0]) / law.plateau_cell) - 1; i <= Math.floor((offset[0] + reach - law.plateau_shift[0]) / law.plateau_cell) + 1; i++)
+      for (let j = Math.floor((offset[1] - reach - law.plateau_shift[1]) / law.plateau_cell) - 1; j <= Math.floor((offset[1] + reach - law.plateau_shift[1]) / law.plateau_cell) + 1; j++) {
+        const r = rockOf(i, j, law, PLATEAU);
+        if (r.height) plateaus.push(r);
+      }
+}
+function plateauHeight(X, Y) {                         // body.py's plateau layer at terrain point X, Y (0 off them)
+  let h = 0;
+  for (const r of plateaus) h = Math.max(h, rockHeight(r, X, Y));
+  return h;
+}
+function groundHeight(x, y) {
+  let h = plateaus.length ? plateauHeight(x + offset[0], y + offset[1]) : 0;
+  for (const [kx, ky, a, ph] of waves) h += a * Math.cos(kx * (x + offset[0]) + ky * (y + offset[1]) + ph);
+  return h;
+}
+function lay(geometry, lift) {                        // lifts every vertex of a z-up geometry onto the ground
+  const p = geometry.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setZ(i, groundHeight(p.getX(i), p.getY(i)) + lift);
+  p.needsUpdate = true;
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+}
+const ARENA_RADIUS = 10;                              // body.py's ARENA_RADIUS: the recentre's rim
+const GROUND_RADIUS = ARENA_RADIUS + 0.5;
+const ground = new THREE.Mesh(new THREE.RingGeometry(0.001, GROUND_RADIUS, 320, 220), new THREE.MeshStandardMaterial({ color: GROUND_COLOUR, roughness: 1 }));
 ground.receiveShadow = true;
 scene.add(ground);
 const GRID_COLOUR = '#262e3c';                        // the page's own; the two axes through the origin a shade lighter
-let grid = null;
-function makeGrid(hex) {                              // rebuilt to recolour
+let grid = null, gridHex = GRID_COLOUR;
+function makeGrid(hex) {                              // the lines follow the ground: built from short segments, rebuilt to recolour
+  gridHex = hex;
   if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
   const line = new THREE.Color(hex), axes = new THREE.Color(hex).lerp(new THREE.Color('#ffffff'), 0.12);
-  const pos = [], col = [];
-  for (let i = -22; i <= 22; i++) {
-    const c = i === 0 ? axes : line, u = i * 0.25, t = Math.sqrt(Math.max(0, 5.5 * 5.5 - u * u));   // the grid ends with the ground disc
-    pos.push(-t, u, 0.001, t, u, 0.001, u, -t, 0.001, u, t, 0.001);
-    for (let n = 0; n < 4; n++) col.push(c.r, c.g, c.b);
+  const pos = [], col = [], STEP = waves.length || plateaus.length ? 0.05 : 11;   // flat: each line one segment
+  for (let i = -Math.floor(GROUND_RADIUS / 0.25); i <= Math.floor(GROUND_RADIUS / 0.25); i++) {
+    const c = i === 0 ? axes : line, u = i * 0.25, end = Math.sqrt(Math.max(0, GROUND_RADIUS * GROUND_RADIUS - u * u));   // the grid ends with the ground disc
+    for (let t = -end; t < end - 1e-9; t += STEP) {
+      const t1 = Math.min(t + STEP, end);
+      for (const [x0, y0, x1, y1] of [[t, u, t1, u], [u, t, u, t1]]) {
+        pos.push(x0, y0, groundHeight(x0, y0) + 0.001, x1, y1, groundHeight(x1, y1) + 0.001);
+        col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+      }
+    }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -79,10 +121,133 @@ function makeGrid(hex) {                              // rebuilt to recolour
   grid = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true }));
   scene.add(grid);
 }
-makeGrid(GRID_COLOUR);
-const rim = new THREE.Mesh(new THREE.RingGeometry(4.98, 5.02, 256), new THREE.MeshBasicMaterial({ color: 0x357a38, side: THREE.DoubleSide }));
-rim.position.z = 0.002;
+// The rocks: spider/body.py's rocks, cell by cell, from the server's law (describe's rocks) and the
+// rough ground's hash, so the page draws the rocks the body meets: each rock the field MuJoCo holds,
+// sampled on the same lattice (the law's step) and flat shaded, drawn around the pose's offset.
+const M64 = (1n << 64n) - 1n;
+function grain(i, j) {                                // body.py's _grain: the same 64-bit hash, in -1..1
+  let h = ((BigInt.asUintN(64, BigInt(i)) * 0x9E3779B97F4A7C15n) ^ (BigInt.asUintN(64, BigInt(j)) * 0xC2B2AE3D27D4EB4Fn)) & M64;
+  h ^= h >> 29n;
+  h = (h * 0xBF58476D1CE4E5B9n) & M64;
+  h ^= h >> 32n;
+  return Number(h >> 11n) / 9007199254740992 * 2 - 1;
+}
+const GIANT_ROW = 2 ** 40;                            // body.py's GIANT_ROW: a lattice's draws lie this far along j times its number
+const SMALL = 0, GIANT = 1, PLATEAU = 2;              // body.py's lattices
+const plateauCache = new Map();
+function offPlateaus(cx, cy, radius, law, giant) {    // body.py's _off_plateaus: off every bare plateau's foot (a giant off every one)
+  const pi = Math.floor((cx - law.plateau_shift[0]) / law.plateau_cell), pj = Math.floor((cy - law.plateau_shift[1]) / law.plateau_cell);
+  for (let di = -1; di <= 1; di++)
+    for (let dj = -1; dj <= 1; dj++) {
+      const key = (pi + di) + ',' + (pj + dj);
+      if (!plateauCache.has(key)) plateauCache.set(key, rockOf(pi + di, pj + dj, law, PLATEAU));
+      const p = plateauCache.get(key);
+      if (p.height && !(p.rocky && !giant) && Math.hypot(cx - p.cx, cy - p.cy) < p.radius + radius) return false;
+    }
+  return true;
+}
+function rockOf(i, j, law, layer = SMALL) {           // body.py's _rock_shape: 0 height for none
+  const u = Array.from({ length: 48 }, (_, k) => (grain(48 * i + k, j + layer * GIANT_ROW) + 1) / 2), F = law.facets;
+  const big = u[10] < law.big, giant = layer !== SMALL;
+  const [cell, share, hr, rr] = layer === PLATEAU ? [law.plateau_cell, law.plateau_share, law.plateau_height, [0, 0]]
+    : layer === GIANT ? [law.giant_cell, law.giant_share, law.giant_height, law.giant_radius]
+    : [law.cell, law.share, big ? law.big_height : law.height, big ? law.big_radius : law.radius];
+  const height = hr[0] + u[1] * (hr[1] - hr[0]), plateau = layer === PLATEAU;
+  const narrow = plateau ? law.plateau_stretch + u[45] * (1 - law.plateau_stretch) : law.stretch + u[45] * (1 - law.stretch);
+  const ramp = law.plateau_slope[0] + u[6] * (law.plateau_slope[1] - law.plateau_slope[0]);   // a plateau's: its top's reach chosen, its ramps added
+  const level = Array.from({ length: F }, (_, k) => (law.plateau_top[0] + u[13 + k] * (law.plateau_top[1] - law.plateau_top[0])) / narrow + height / ramp);
+  const radius = plateau ? 1.25 * Math.max(...level) : rr[0] + u[2] * (rr[1] - rr[0]);
+  const [sx, sy] = plateau ? law.plateau_shift : [0, 0];   // body.py's _shift
+  const cx = sx + i * cell + radius + u[3] * (cell - 2 * radius), cy = sy + j * cell + radius + u[4] * (cell - 2 * radius);
+  const flanks = Array.from({ length: F }, (_, k) => {
+    const angle = 2 * Math.PI * u[5] + 2 * Math.PI * (k + law.jitter * (u[21 + k] - 0.5)) / F;
+    return [Math.cos(angle), Math.sin(angle), plateau ? level[k] : radius * (law.foot[0] + u[13 + k] * (law.foot[1] - law.foot[0])), angle + Math.PI / F];
+  });
+  const reach = law.apex * radius * u[11], turn = 2 * Math.PI * u[12];
+  const there = u[0] < share && Math.hypot(cx, cy) - (giant ? radius : 0) >= law.clear && (plateau || offPlateaus(cx, cy, radius, law, layer === GIANT));
+  if (plateau)                                        // level-topped, ramped all round, never a spike
+    return { cx, cy, radius, flanks, spike: false, rocky: u[9] < law.plateau_rocky, height: there ? height : 0, slope: ramp,
+             crown: flanks.map(f => [Math.cos(f[3]), Math.sin(f[3]), 0, height]),
+             lean: 2 * Math.PI * u[7], tilt: 0, apex: [0, 0],
+             axis: 2 * Math.PI * u[44], narrow, tone: u[46], warm: u[47] };
+  const spike = u[9] < law.spike;
+  return { cx, cy, radius, flanks, spike, height: there ? height : 0,
+           slope: spike ? 1.05 * height / Math.min(...flanks.map(f => f[2])) : law.slope[0] + u[6] * (law.slope[1] - law.slope[0]),
+           crown: flanks.map((f, k) => [Math.cos(f[3]), Math.sin(f[3]), law.crown[0] + u[29 + k] * (law.crown[1] - law.crown[0]), height * (0.85 + 0.15 * u[37 + k])]),
+           lean: 2 * Math.PI * u[7], tilt: spike ? 0 : law.tilt * u[8],
+           apex: spike ? [reach * Math.cos(turn), reach * Math.sin(turn)] : [0, 0],
+           axis: 2 * Math.PI * u[44], narrow, tone: u[46], warm: u[47] };                // the page's own: the rock's colour, not the world's
+}
+function rockHeight(r, x, y) {                        // body.py's _rocks_height for one rock
+  const dx = x - r.cx, dy = y - r.cy, ax = Math.cos(r.axis), ay = Math.sin(r.axis);
+  const px = ax * dx + ay * dy - r.apex[0], py = (-ay * dx + ax * dy) / r.narrow - r.apex[1];
+  if (!r.height || Math.hypot(dx, dy) >= r.radius) return 0;
+  let h = r.height * (1 - r.tilt * (1 + (Math.cos(r.lean) * dx + Math.sin(r.lean) * dy) / r.radius) / 2);
+  for (const [nx, ny, foot] of r.flanks) h = Math.min(h, r.slope * (foot - (nx * px + ny * py)));
+  for (const [ux, uy, crown, rise] of r.crown) h = Math.min(h, rise - (r.spike ? r.slope : crown) * (ux * px + uy * py));
+  return Math.max(h, 0);
+}
+const rockSkin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0.0, flatShading: true, side: THREE.DoubleSide });
+const rocks = new THREE.Group();
+scene.add(rocks);
+function rockMesh(r, law, ox, oy, s, lift = 0) {      // the field's triangles over the rock (every s m), its bare ground left out, raised by lift
+  const i0 = Math.floor((r.cx - r.radius) / s), i1 = Math.ceil((r.cx + r.radius) / s);
+  const j0 = Math.floor((r.cy - r.radius) / s), j1 = Math.ceil((r.cy + r.radius) / s), n = i1 - i0 + 1;
+  const position = [], z = [], colour = [], inside = [];
+  const base = new THREE.Color().setHSL(r.warm < 0.5 ? 0.6 : 0.08, 0.01 + 0.07 * Math.abs(2 * r.warm - 1), 0.2 + 0.42 * r.tone), c = new THREE.Color();   // basalt to limestone, cool or warm grey
+  for (let j = j0; j <= j1; j++)
+    for (let i = i0; i <= i1; i++) {
+      const h = rockHeight(r, i * s, j * s), under = r.plateau ? lift : plateauHeight(i * s, j * s), speck = (grain(i, j) + 1) / 2;   // a fleck per node, darker at the foot
+      z.push(h);
+      inside.push(Math.hypot(i * s - ox, j * s - oy) <= GROUND_RADIUS);   // cut at the ground's disc, as the ground is
+      position.push(i * s - ox, j * s - oy, under + h);   // a small rock on the plateau of rock it lies on
+      c.copy(base).multiplyScalar(0.72 + 0.28 * Math.min(1, h / Math.max(r.height, 1e-9) * 1.6) + 0.12 * (speck - 0.5));
+      colour.push(c.r, c.g, c.b);
+    }
+  const index = [], at = (i, j) => (j - j0) * n + (i - i0);
+  for (let j = j0; j < j1; j++)
+    for (let i = i0; i < i1; i++) {
+      const a = at(i, j), b = at(i + 1, j), c = at(i + 1, j + 1), d = at(i, j + 1);
+      if ((z[a] || z[b] || z[c]) && inside[a] && inside[b] && inside[c]) index.push(a, b, c);
+      if ((z[a] || z[c] || z[d]) && inside[a] && inside[c] && inside[d]) index.push(a, c, d);
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colour, 3));
+  g.setIndex(index);
+  g.computeVertexNormals();
+  const m = new THREE.Mesh(g, rockSkin);
+  m.castShadow = m.receiveShadow = true;
+  return m;
+}
+function drawRocks(law, at) {                         // the small rocks on the field's lattice, the giants on every second node of it, the plateaus of rock every 10 cm
+  for (const m of rocks.children) m.geometry.dispose();
+  rocks.clear();
+  if (!law) return;
+  const [ox, oy] = at || [0, 0], reach = GROUND_RADIUS;
+  for (const p of plateaus)                           // a plateau of rock: drawn as rock, a little above the ground it covers
+    if (p.rocky && Math.hypot(p.cx - ox, p.cy - oy) <= reach + p.radius) rocks.add(rockMesh({ ...p, plateau: true }, law, ox, oy, 0.1, 0.004));
+  for (const [layer, cell, step] of [[SMALL, law.cell, law.step], [GIANT, law.giant_cell, 2 * law.step]])
+    for (let i = Math.floor((ox - reach) / cell) - 1; i <= Math.floor((ox + reach) / cell) + 1; i++)
+      for (let j = Math.floor((oy - reach) / cell) - 1; j <= Math.floor((oy + reach) / cell) + 1; j++) {
+        const r = rockOf(i, j, law, layer);
+        if (r.height && Math.hypot(r.cx - ox, r.cy - oy) <= reach + r.radius) rocks.add(rockMesh(r, law, ox, oy, step));
+      }
+}
+const rim = new THREE.Mesh(new THREE.RingGeometry(ARENA_RADIUS - 0.03, ARENA_RADIUS + 0.03, 512), new THREE.MeshBasicMaterial({ color: 0x357a38, side: THREE.DoubleSide }));
 scene.add(rim);
+let arenaDrawn = null;
+function drawArena(name, terrains, at) {               // the ground, its grid and the rim, laid on the arena's terrain
+  const key = name + ' ' + (name === 'flat' ? '' : (at || [0, 0]).join(','));
+  if (key === arenaDrawn || (name !== 'flat' && !terrains)) return;   // a terrain is drawn once its waves are described
+  arenaDrawn = key;
+  setArena(name, terrains, at);
+  drawRocks(name === 'rocks' ? described && described.rocks : null, at);
+  lay(ground.geometry, 0);
+  lay(rim.geometry, 0.002);
+  makeGrid(gridHex);
+}
+drawArena('flat');
 
 // --- the surface: a meadow, gravel, or both, painted on the ground. How the world is drawn, not
 // its law: the body's contact and the reward are the same on every surface, the brain senses no
@@ -359,7 +524,7 @@ function buildBody(shape, count) {
   abdomen.scale.set(...shape.abdomen);               // the model's abdomen and waist: they lie on the floor, never in it
   abdomen.position.set(...shape.abdomen_pos);
   placeCylinder(waist, new THREE.Vector3(...shape.waist[0]), new THREE.Vector3(...shape.waist[1]), shape.waist_radius);
-  for (const leg of legs) { spider.remove(leg.coxa, leg.hipJoint, leg.femur, leg.tibia, leg.knee, leg.tarsus, leg.ankle, leg.pad); scene.remove(leg.foot); }
+  for (const leg of legs) { spider.remove(leg.coxa, leg.hipJoint, leg.femur, leg.tibia, leg.knee, leg.tarsus, leg.ankle, leg.pad, leg.claw); scene.remove(leg.foot); }
   legs.length = 0;
   tarsusShape = paint(new THREE.CylinderGeometry(shape.foot_radius / TARSUS_R, 1, 1, 12, 8), tarsusColour);   // its tip is the foot sphere
   for (let i = 0; i < count; i++) {
@@ -381,11 +546,15 @@ function buildBody(shape, count) {
     pad.scale.setScalar(shape.foot_radius);
     pad.castShadow = true;
     pad.add(hairs(25, true, 0.2, 0.5));
+    const claw = new THREE.Mesh(unit, padSkin);     // the model's claw, when the body has one: drawn where the pose puts its tip
+    claw.castShadow = true;
+    claw.visible = false;
+    spider.add(claw);
     const foot = new THREE.Mesh(new THREE.CircleGeometry(0.02, 16), new THREE.MeshBasicMaterial({ color: 0x5ad1ff, transparent: true, opacity: 0.8 }));
     for (const m of [coxa, hipJoint, femur, tibia, knee, tarsus, ankle, pad]) { m.visible = false; spider.add(m); }   // until the first pose places them
     foot.visible = false;
     scene.add(foot);                                 // planted discs lie in the world, on the ground
-    legs.push({ coxa, hipJoint, femur, tibia, knee, tarsus, ankle, pad, foot });
+    legs.push({ coxa, hipJoint, femur, tibia, knee, tarsus, ankle, pad, claw, foot, clawRadius: shape.claw_radius || 0.002 });
   }
 }
 
@@ -394,12 +563,13 @@ let firstFrame = true;
 let lastPose = null;
 function draw(pose) {
   lastPose = pose;
+  drawArena(pose.arena || 'flat', described && described.terrains, pose.offset);
   spider.position.set(pose.x, pose.y, pose.z);
   const [w, x, y, z] = pose.quat;                    // MuJoCo's order; three.js takes x, y, z, w
   spider.quaternion.set(x, y, z, w);
   spider.updateMatrixWorld();                        // the legs' world points come into the torso's frame
   for (let i = 0; i < legs.length && i < pose.legs.length; i++) {
-    const [hx, hy, hz, kx, ky, kz, ax, ay, az, fx, fy, fz] = pose.legs[i];
+    const [hx, hy, hz, kx, ky, kz, ax, ay, az, fx, fy, fz, cx, cy, cz] = pose.legs[i];
     const leg = legs[i];
     spider.worldToLocal(_h.set(hx, hy, hz));
     spider.worldToLocal(_a.set(kx, ky, kz));
@@ -417,10 +587,12 @@ function draw(pose) {
     leg.knee.position.copy(_a);
     leg.pad.position.copy(_b);
     leg.coxa.visible = leg.hipJoint.visible = leg.femur.visible = leg.tibia.visible = leg.knee.visible = leg.tarsus.visible = leg.ankle.visible = leg.pad.visible = true;
+    leg.claw.visible = cx !== undefined;            // the pawl's claw, from the foot's centre to its tip
+    if (leg.claw.visible) placeCylinder(leg.claw, _b, spider.worldToLocal(_r.set(cx, cy, cz)), leg.clawRadius);
     leg.foot.visible = pose.planted[i];              // a foot on the floor: a disc on the floor under it
-    leg.foot.position.set(fx, fy, 0.003);
+    leg.foot.position.set(fx, fy, groundHeight(fx, fy) + 0.003);
   }
-  const next = new THREE.Vector3(pose.x, pose.y, 0.08);
+  const next = new THREE.Vector3(pose.x, pose.y, groundHeight(pose.x, pose.y) + 0.08);
   if (!viewFollows && !firstFrame) next.copy(target);   // a fixed view: the camera stays where it is, the spider may walk out of it
   if (firstFrame || next.distanceTo(target) > 1.0) {   // a recentre: jump with the spider
     camera.position.sub(target).add(next);
@@ -482,10 +654,12 @@ fetch('/api/describe').then(r => r.json()).then(d => {
 // What the description settles on the page: the law line, the body line and the settings' fields.
 // Called again after a control that changes the description (a law change, a load).
 let lawFilled = null;                                  // the law the fields were last filled from
+let entropyFilled;                                      // the living brain's entropy the field was last filled from
+let needFilled;                                         // the living brain's arousal need the field was last filled from
 function describedBy(d) {
   described = d;
   if (lastState) $('law').textContent = law(lastState);
-  $('body').textContent = `MuJoCo ${d.mujoco} · model ${d.model}` + ({ leg: ', a slot per leg', pair: ', a slot per pair' }[d.layout] || '') + (d.compass ? ', a compass' : '') + (d.ground ? ', the ground sense' : '') + (d.up ? ', the up sense' : '');
+  $('body').textContent = `MuJoCo ${d.mujoco} · model ${d.model}` + ({ leg: ', a slot per leg', pair: ', a slot per pair' }[d.layout] || '') + (d.compass ? ', a compass' : '') + (d.ground ? ', the ground sense' : '') + (d.up ? ', the up sense' : '') + (d.load ? ', the load sense' : '');
   const r = d.reward || {};
   // The fields are filled from the server's law only when that law is new to the page: a
   // description re-read for another reason (the socket reconnecting) leaves a half-made edit alone.
@@ -497,20 +671,33 @@ function describedBy(d) {
     }
     lawFilled = lawNow;
   }
+  $('arena').value = r.arena || 'flat';
+  if (lastPose) drawArena(r.arena || 'flat', d.terrains, lastPose.offset);
   $('birth-seed').value = d.seed;
   $('birth-layout').value = d.layout || 'joint';
   $('birth-compass').checked = !!d.compass;
   $('birth-ground').checked = !!d.ground;
   $('birth-up').checked = !!d.up;
+  $('birth-load').checked = !!d.load;
   const genes = { ...(d.genes || {}) };
   $('birth-hold').value = genes.hold == null ? '' : genes.hold;
   $('birth-entropy').value = genes.entropy == null ? FOUNDER_ENTROPY : genes.entropy;
-  $('birth-maturity').checked = !!genes.maturity;
-  $('birth-code').value = genes.code == null ? '' : genes.code;
-  $('birth-learned-code').value = genes.learned_code == null ? '' : genes.learned_code;
-  for (const k of ['hold', 'entropy', 'maturity', 'code', 'learned_code']) delete genes[k];
+  for (const k of ['hold', 'entropy']) delete genes[k];   // maturity and the codes stay in the text: off the page
   $('birth-genes').value = geneWords(genes);
-  $('genesline').textContent = 'live brain: ' + (geneWords(d.genes) || 'founder genes') + ' · seed ' + d.seed;
+  const retunes = d.gene_changes ? d.gene_changes.length : 0;
+  $('genesline').textContent = 'live brain: ' + (geneWords(d.genes) || 'founder genes') + ' · seed ' + d.seed
+    + (retunes ? ` · entropy now ${d.entropy}, need now ${d.need} (${retunes} live ${retunes === 1 ? 'change' : 'changes'}: a schedule of genes)` : '');
+  // the live entropy field is filled only when the brain's value is new to the page, as the law's
+  if (d.entropy !== entropyFilled) {
+    $('live-entropy').value = d.entropy === null || d.entropy === undefined ? '' : d.entropy;
+    $('live-entropy').disabled = $('apply-entropy').disabled = d.entropy === null || d.entropy === undefined;
+    entropyFilled = d.entropy;
+  }
+  if (d.need !== needFilled) {
+    $('live-need').value = d.need === null || d.need === undefined ? '' : d.need;
+    $('live-need').disabled = $('apply-need').disabled = d.need === null || d.need === undefined;
+    needFilled = d.need;
+  }
 }
 // high_water and old_ground stay law settings (the nursery's --high-water and --old-ground) but are
 // not on the page: unmeasured on this body and off; a life born with them still shows its mark.
@@ -537,7 +724,9 @@ function law(m) {
   if (r.pay_per_metre !== 40) parts.push(`${r.pay_per_metre}/m`);
   if (r.backward_pay) parts.push(`backward ${r.backward_pay}`);
   if (r.high_water) parts.push(`high-water${r.old_ground ? ' leaking ' + r.old_ground : ''} · mark ${fmt(m.mark)} m`);
-  if (r.stance_pay) parts.push(`stance ${r.stance_pay}${r.stance_floor && r.stance_floor !== 4 ? ' of ' + r.stance_floor : ''}${r.stance_upright === false ? ' (any foot)' : ''}`);
+  // the charge a foot and the floor it is short of, both named: "stance 0.1 of 1" read as a share
+  if (r.stance_pay) { const floor = r.stance_floor || 4;
+    parts.push(`stance ${r.stance_pay}/foot under ${floor} foot${floor === 1 ? '' : 's'}${r.stance_upright === false ? ' (any foot)' : ''}`); }
   if (r.stand_pay) parts.push(`stand ${r.stand_pay}`);
   if (r.carry) parts.push('carried');
   if (r.low_pay) parts.push(`low ${r.low_pay}`);
@@ -547,6 +736,7 @@ function law(m) {
   if (r.upright_pay) parts.push(`upright ${r.upright_pay}`);
   if (r.torque_pay) parts.push(`torque ${r.torque_pay}`);
   if (r.yaw_pay) parts.push(`yaw ${r.yaw_pay}`);
+  if (r.arena && r.arena !== 'flat') parts.push(r.arena);
   const changes = described.law_changes ? described.law_changes.length : 0;
   if (changes) parts.push(`a schedule: changed ${changes}×`);
   return parts.join(' · ');
@@ -657,9 +847,10 @@ function update(m) {
   const paid = m.blocks.filter(b => b.reward_per_moment !== undefined && b.reward_per_moment !== null);
   const lastPaid = paid.length ? paid[paid.length - 1].reward_per_moment : null;
   $('reward-mean').textContent = paid.length
-    ? `${fmt(paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length, 3)} over ${paid.length * 100} · last 100: ${fmt(lastPaid, 3)}`
-      + (lastPaid <= -0.499 ? ' · at the cap' : '')
+    ? `${fmt(paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length, 3)} over ${paid.length * 100} · last ${fmt(lastPaid, 3)}`
+      + (lastPaid <= -0.499 ? ' · cap' : '')
     : '—';
+  $('reward-mean').className = 'v' + (paid.length && lastPaid <= -0.499 ? ' warn' : '');
   const termed = m.blocks.filter(b => b.terms);
   const TERM_NAMES = ['progress', 'stand', 'touchdown', 'idle', 'low', 'head', 'stance', 'yaw', 'upright', 'torque'];
   const termMean = k => termed.reduce((a, b) => a + (b.terms[k] || 0), 0) / termed.length;
@@ -740,23 +931,30 @@ function strip(m) {
     ctx.fillText(m.policy === 'random' ? 'random policy: no brain' : 'no settled state', 8, 20);
     return;
   }
-  row(a.sensory, 4, 26, W - 8, 1);
-  row(a.association, 36, 20, W - 8, 1);
-  const motor = a.motor, cell = (W - 8) / 16, h = 24;
-  for (let j = 0; j < 16; j++) {
+  row(a.sensory, 7, 26, W - 8, 1);                  // each label sits above its row with a clear gap
+  row(a.association, 43, 20, W - 8, 1);
+  // One column per joint, as many as the body has (twenty-four), with its three answers. Under a
+  // slot per joint the motor units are the joint's own; under a slot per leg or pair they are the
+  // slot's joint answers (27 each), not the joint's, so their row is drawn above the joints' commands.
+  const motor = a.motor, joints = m.commands ? m.commands.length : motor.length / 3;
+  const perJoint = motor.length === 3 * joints, cell = (W - 8) / joints;
+  const top = perJoint ? 76 : 85, h = perJoint ? 24 : 15;
+  if (!perJoint) row(motor, 68, 15, W - 8, 0);
+  for (let j = 0; j < joints; j++) {
     for (let k = 0; k < 3; k++) {
-      const v = motor[3 * j + k];
-      ctx.fillStyle = heat(v);
-      ctx.fillRect(4 + j * cell, 64 + k * (h / 3), cell - 1, h / 3 - 1);
+      ctx.fillStyle = perJoint ? heat(motor[3 * j + k]) : '#1b2230';
+      ctx.fillRect(4 + j * cell, top + k * (h / 3), cell - 1, h / 3 - 1);
     }
     if (m.commands) {
       ctx.strokeStyle = '#5ad1ff';
-      ctx.strokeRect(4 + j * cell + 0.5, 64 + m.commands[j] * (h / 3) + 0.5, cell - 2, h / 3 - 2);
+      ctx.strokeRect(4 + j * cell + 0.5, top + m.commands[j] * (h / 3) + 0.5, cell - 2, h / 3 - 2);
     }
   }
   ctx.fillStyle = '#8b94a7';
   ctx.font = '9px system-ui';
-  ctx.fillText('sensory', 6, 11); ctx.fillText('association', 6, 45); ctx.fillText('motor: to low end · hold setpoint · to high end, per joint', 6, 91);
+  ctx.fillText('sensory', 6, 10); ctx.fillText('association', 6, 46);
+  ctx.fillText(perJoint ? `motor: to low end · hold setpoint · to high end, per joint (${joints})`
+    : `motor (${motor.length}) · each joint's command (${joints}): low end · hold · high end`, 6, 72);
 }
 function row(values, y, h, w, pad) {
   const cell = w / values.length;
@@ -774,24 +972,22 @@ function heat(v) {
 // Reset gives birth to what the settings name; genes are composed once, so this is the one
 // place they are set. The page reloads on the new life: a reset is a new life, not a new frame.
 function birth() {
-  // the reward learner's three options and the two codes have fields of their own; the rest is the text, in the nursery's words
+  // hold and entropy have fields of their own; the rest (maturity and the codes among it) is the text, in the nursery's words
   const words = [$('birth-genes').value.trim()];
   if ($('birth-hold').value !== '') words.push('hold=' + num($('birth-hold')));
   // entropy is sent whenever it is not the founder's, 0 included: an empty word would be the founder's 0
   if ($('birth-entropy').value !== '' && Number($('birth-entropy').value) !== FOUNDER_ENTROPY) words.push('entropy=' + Number($('birth-entropy').value));
-  if ($('birth-maturity').checked) words.push('maturity=true');
-  if (num($('birth-code')) > 0) words.push('code=' + Math.round(Number($('birth-code').value)));
-  if (num($('birth-learned-code')) > 0) words.push('learned_code=' + Math.round(Number($('birth-learned-code').value)));
   return { seed: num($('birth-seed')), layout: $('birth-layout').value,
            compass: $('birth-compass').checked, ground: $('birth-ground').checked,
            // up only when it matters (ticked, or a life that has it): a server older than the up
            // sense refuses a birth that names it, and a birth that leaves it out keeps the life's
            ...($('birth-up').checked || (described && described.up) ? { up: $('birth-up').checked } : {}),
+           ...($('birth-load').checked || (described && described.load) ? { load: $('birth-load').checked } : {}),
            genes: words.filter(Boolean).join(' ') };
 }
 function resetQuestion(b) {
   return 'Reset everything?\n\nA newborn brain replaces the live one: seed ' + b.seed + ({ leg: ', a slot per leg', pair: ', a slot per pair' }[b.layout] || '')
-    + (b.compass ? ', a compass' : '') + (b.ground ? ', the ground sense' : '') + (b.up ? ', the up sense' : '') + ', ' + (b.genes ? 'genes ' + b.genes : 'founder genes') + '.\n'
+    + (b.compass ? ', a compass' : '') + (b.ground ? ', the ground sense' : '') + (b.up ? ', the up sense' : '') + (b.load ? ', the load sense' : '') + ', ' + (b.genes ? 'genes ' + b.genes : 'founder genes') + '.\n'
     + 'The world returns to the origin, every counter goes to zero and the saved life in runs/ is deleted.\n\n'
     + 'The brain that has lived until now is gone for good.';
 }
@@ -830,7 +1026,7 @@ document.querySelectorAll('button[data-op]').forEach(b => b.addEventListener('cl
   else if (result && b.dataset.op === 'load') refreshDescription();
   else if (result && b.dataset.op === 'save') toast(b, result.saved ? 'saved' : (result.why || 'not saved'));
 }));
-$('apply-law').addEventListener('click', async () => {
+async function applyLaw() {
   const value = {};
   for (const k of LAW_KEYS) {
     const field = $('law-' + k);
@@ -841,6 +1037,22 @@ $('apply-law').addEventListener('click', async () => {
   const had = described && described.reward ? described.reward.course : null;
   value.course = value.course ? (had === null || had === undefined ? true : had) : null;
   if (await control({ op: 'law', value })) refreshDescription();
+}
+// the law's fields stand in two columns, each with its own button: both apply the whole law
+$('apply-law').addEventListener('click', applyLaw);
+$('apply-law-progress').addEventListener('click', applyLaw);
+// The arena select: the ground is the world's law, unlike the colours below it, so a change is a
+// law change on the living brain and makes the life a schedule.
+$('arena').addEventListener('change', async (e) => {
+  const was = (described && described.reward && described.reward.arena) || 'flat';
+  if (await control({ op: 'law', value: { arena: e.target.value } })) refreshDescription();
+  else e.target.value = was;
+});
+$('apply-entropy').addEventListener('click', async () => {
+  if (await control({ op: 'entropy', value: num($('live-entropy')) })) refreshDescription();
+});
+$('apply-need').addEventListener('click', async () => {
+  if (await control({ op: 'need', value: num($('live-need')) })) refreshDescription();
 });
 
 function connect() {

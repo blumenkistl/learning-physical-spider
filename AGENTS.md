@@ -50,8 +50,16 @@ window on that one life.
   `touchdown_pay` (given per leg set down after `idle_moments` aloft) after legs held no preference
   under the held-up-leg charge; all are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
   (off by default, measured dose, labelled as shaping).
+- **The arena is the world's, not the body's.** `flat` (the plane, the founder), `hills` or
+  `steep` (learning-spider's waves, steep at 2.5 times hills, as a MuJoCo height field, `spider/body.py`),
+  `rough` (level but grained, ±3 mm every centimetre, the same height field), or `rocks` (level with
+  angular rocks lying on it, blocks and spikes 2 to 8 cm high, boulders up to 18 cm and giants up to 60 cm, and level plateaus up to 40 cm high and 8 m or more across with ramps all round, bare or of rock with rocks on them, the same height field). The arena does not
+  change `MODEL_DIGEST`; it is set, shown, saved and counted with the law like any law setting,
+  named in every reading, and a recentre moves the ground with the body. The brain senses no
+  height.
 - **Senses read the body, not the law.** Joint angles, setpoints, forward speed, yaw rate,
-  roll and pitch through the population code, and one floor-contact flag per foot. A new sense
+  roll and pitch through the population code, and one floor-contact flag per foot (the options
+  `compass`, `ground`, `up` and `load`, each foot's contact force, read the same way). A new sense
   is a birth option named in every reading.
 - **Every outcome is delivered exactly once**, **controls are named honestly**, **memory is
   the brain's**, **readings are readings**, **residuals are not energy**: as in

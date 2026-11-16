@@ -56,3 +56,23 @@ def test_the_up_sense_tells_the_back_from_a_side_where_roll_cannot():
     flip = np.abs(plain.observe(back_left)[0, roll] - plain.observe(back_right)[0, roll]).max()
     apart = np.abs(up.observe(side)[0, tail] - up.observe(back_left)[0, tail]).max()
     assert near < 0.25 and flip > 0.9 and apart > 0.9     # 0.1 rad apart on the back: near for up, a flip for roll
+
+
+def test_the_load_sense_reads_how_much_each_foot_carries():
+    """Standing on all eight feet, the loads sum to the body's weight; a foot lifted reads 0
+    and its weight goes to the feet still down, which the contact flag alone cannot tell."""
+    plain, load = Senses(), Senses(load=True)
+    assert load.inputs == plain.inputs + LEGS * PER and load.names[-LEGS:] == [f"load{i}" for i in range(LEGS)]
+    spider = Spider()
+    for _ in range(40):
+        spider.step([1] * JOINTS)
+    standing = spider.foot_loads()
+    assert spider.planted().all() and abs(standing.sum() - 1.0) < 0.02 and (standing > 0).all()
+    commands = np.ones((LEGS, 3), dtype=int)
+    commands[[0, 2, 5, 7], 1] = 2                       # four hips lift
+    for _ in range(15):
+        spider.step(commands.reshape(-1))
+    lifted = spider.foot_loads()
+    assert (lifted[~spider.planted()] == 0).all() and lifted.max() > standing.max()
+    tail = slice(plain.code.inputs, plain.code.inputs + LEGS * PER)
+    assert load.observe(spider).shape == (1, load.inputs) and load.observe(spider)[0, tail].any()

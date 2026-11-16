@@ -53,15 +53,17 @@ def test_the_page_knows_the_founder_entropy():
 def test_the_page_offers_the_law_this_life_has_and_no_other():
     page = (STATIC / "index.html").read_text()
     app = (STATIC / "app.js").read_text()
-    # the high-water mark and its leak stay law settings for the nursery, but are not on the page
-    off_page = ("high_water", "old_ground")
+    # the high-water mark and its leak stay law settings for the nursery, but are not on the page;
+    # the arena is the world panel's select, a law change of its own, not a field of the settings
+    off_page = ("high_water", "old_ground", "arena")
     shown = [k for k in LAW_KEYS if k not in off_page]
     for key in shown:
         assert f'id="law-{key}"' in page
     for key in off_page:
         assert f'id="law-{key}"' not in page
     assert "const LAW_KEYS = [" + ", ".join(f"'{k}'" for k in shown) + "];" in app
-    for gone in ("drift", "slope_pull", "muscle_rate", "arena", "birth-muscles", "birth-setpoints"):
+    assert 'id="arena"' in page and all(f'<option value="{a}">' in page for a in ("flat", "hills", "steep"))
+    for gone in ("drift", "slope_pull", "muscle_rate", "birth-muscles", "birth-setpoints"):
         assert f'id="{gone}"' not in page and f'id="law-{gone}"' not in page, gone
 
 async def test_state_and_describe(client):
@@ -78,7 +80,7 @@ async def test_state_and_describe(client):
     assert described["model"] and "muscles" not in described and "friction" not in described
     assert len(described["shape"]["body"]) == 3 and described["shape"]["head_radius"] > 0
     assert len(described["shape"]["abdomen"]) == len(described["shape"]["abdomen_pos"]) == 3
-    assert all(len(leg) == 12 for leg in state["pose"]["legs"])         # hip, knee, ankle and foot: world points
+    assert all(len(leg) == 15 for leg in state["pose"]["legs"])         # hip, knee, ankle, foot and claw tip: world points
 
 
 async def test_controls(client):
@@ -191,3 +193,9 @@ async def test_the_law_and_a_birth_are_controls(client):
     assert described["reward"]["high_water"] is True                # the law is the life's, a birth keeps it
     r = await client.post("/api/control", json={"op": "reset", "value": {"muscles": "rate"}})
     assert r.status == 400
+
+
+async def test_the_page_and_its_scripts_are_revalidated_on_every_load(client):
+    for path in ("/", "/static/app.js"):
+        response = await client.get(path)
+        assert response.status == 200 and response.headers.get("Cache-Control") == "no-cache", path

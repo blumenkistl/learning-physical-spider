@@ -520,6 +520,34 @@ class SpiderBrain:
         """Whether an issued command still awaits its outcome."""
         return bool(self.brain.pending_feedback)
 
+    def _unsurprised(self) -> bool:
+        """Whether the pending act was sampled while ``actor_entropy`` was 0 and the brain has
+        been retuned above it since: Cadence's entropy term needs the sampled act's own policy,
+        which an act sampled at 0 never kept, so its outcome is refused at every retry (a live
+        retune from 0 is not refused by ``retune``). Reads the actor's pending act, as Cadence's
+        own ``retune`` does."""
+        config = getattr(getattr(self.brain, "basal_ganglia", None), "config", None)
+        if config is None:                                   # a test's stub has no actor
+            return False
+        actor = self.brain.basal_ganglia
+        return bool(getattr(config, "entropy", 0.0)) and getattr(actor, "_pending", None) is not None \
+            and getattr(actor, "_pending_entropy", None) is None
+
+    def _deliver_unsurprised(self, observation: np.ndarray, feedback: dict[str, Any]) -> np.ndarray:
+        """Deliver that one outcome under the entropy the act was sampled at (0), then act at the
+        brain's present entropy, so the next act keeps its policy. The outcome is delivered once,
+        by Cadence's ``learn``; ``live`` then answers this moment without feedback, so this one
+        outcome is not heard by the arousal (its mood skips one moment)."""
+        brain = self.brain
+        entropy = float(brain.basal_ganglia.config.entropy)
+        brain.retune(actor_entropy=0.0)
+        try:
+            brain.learn(feedback["reward"], feedback["done"], np.atleast_2d(observation))
+        finally:
+            brain.retune(actor_entropy=entropy)
+        self.owed = None                     # delivered, even if the answer below refuses
+        return brain.live(observation)
+
     def moment(self, observation: np.ndarray, reward: float | None, done: bool = False) -> dict[str, Any]:
         brain = self.brain
         began = time.perf_counter()
@@ -540,7 +568,10 @@ class SpiderBrain:
         # brain is rebound on a learning moment, so its weights array is not revisited)
         before = _array(brain.brain.weights) if self._post is not None else None
         try:
-            action = brain.live(observation, **feedback)
+            if feedback and self._unsurprised():
+                action = self._deliver_unsurprised(observation, feedback)
+            else:
+                action = brain.live(observation, **feedback)
             if feedback:
                 self.owed = None            # delivered
         except (RuntimeError, ValueError) as error:

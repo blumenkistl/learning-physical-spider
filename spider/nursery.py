@@ -28,8 +28,9 @@ from typing import Any
 from .brain import DEFAULT_LAYOUT, LAYOUTS
 from .brain import genes_from, parse_gene  # noqa: F401  (the server imports them from here too)
 from .life import (BACKWARD_PAY, BLOCK, COURSE, HIGH_WATER, OLD_GROUND, PROGRESS_PAY, PROGRESS_WINDOW, STANCE_PAY,
-                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, HEAD_PAY, TOUCHDOWN_PAY,
+                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, HEAD_PAY, TOUCHDOWN_PAY, ARENA,
                    STRICT, UPRIGHT, YAW_PAY, Life, checked_course)
+from .body import ARENAS
 from .model import LEGS, MODEL_DIGEST
 from .senses import DEFAULT as DEFAULT_SENSES, PER, Senses
 
@@ -96,6 +97,9 @@ def law_arguments(parser: argparse.ArgumentParser, default=lambda name, value: v
                         help=f"under --high-water, the share paid for progress on old ground, 0 to 1 (default {OLD_GROUND})")
     parser.add_argument("--pay-per-metre", type=float, default=float(default("PAY_PER_METRE", PROGRESS_PAY)),
                         help=f"reward per metre of progress, under the cap of 0.5 a moment (default {PROGRESS_PAY})")
+    parser.add_argument("--arena", choices=ARENAS, default=default("ARENA", ARENA),
+                        help=f"the ground: flat (MuJoCo's plane), hills, a fixed rolling terrain (about ±6 cm), or steep, "
+                             f"the same 2.5 times as high (about ±15 cm) (default {ARENA}; the world's, set and saved with the law)")
     parser.add_argument("--backward-pay", type=float, default=float(default("BACKWARD_PAY", BACKWARD_PAY)),
                         help=f"share of the pay per metre charged for backward progress, 0 to 1 (default {BACKWARD_PAY}; 0 = free)")
 
@@ -114,6 +118,9 @@ def birth_arguments(parser: argparse.ArgumentParser, default=lambda name, value:
     parser.add_argument("--up", action=argparse.BooleanOptionalAction, default=default("UP", DEFAULT_SENSES.up),
                         help="sense the world's up in the torso's frame too (three readings more): tells lying on "
                              "the back from lying on a side, which roll and pitch cannot (default on; --no-up)")
+    parser.add_argument("--load", action=argparse.BooleanOptionalAction, default=default("LOAD", DEFAULT_SENSES.load),
+                        help="sense each foot's load too, the normal force on it as a share of the body's weight "
+                             "(eight readings more): what a spider's strain sense reads (default on; --no-load)")
     parser.add_argument("--layout", choices=LAYOUTS, default=default("LAYOUT", DEFAULT_LAYOUT),
                         help=f"how a newborn brain's answer is read: a slot per joint (three answers), per leg "
                              f"(twenty-seven, the triples of its three joints' answers) or per diagonal pair of legs (twenty-seven, both "
@@ -127,7 +134,7 @@ def life_kwargs(args: argparse.Namespace) -> dict[str, Any]:
     """The Life arguments the shared flags name."""
     return dict(
         genes=genes_from(args.gene) or None, backend=args.backend,
-        senses=Senses(per=args.per or PER, compass=args.compass, ground=args.ground, up=args.up),
+        senses=Senses(per=args.per or PER, compass=args.compass, ground=args.ground, up=args.up, load=args.load),
         stance_pay=args.stance_pay, yaw_pay=args.yaw_pay, window=args.window, high_water=args.high_water,
         old_ground=args.old_ground, pay_per_metre=args.pay_per_metre, backward_pay=args.backward_pay,
         course=args.course, strict=args.strict, layout=args.layout,
@@ -135,7 +142,7 @@ def life_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         stance_floor=args.stance_floor, stand_pay=args.stand_pay, carry=args.carry,
         idle_leg_pay=args.idle_leg_pay, idle_moments=args.idle_moments,
         idle_height=args.idle_height, low_pay=args.low_pay,
-        head_pay=args.head_pay, touchdown_pay=args.touchdown_pay,
+        head_pay=args.head_pay, touchdown_pay=args.touchdown_pay, arena=args.arena,
     )
 
 
@@ -277,6 +284,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "compass": life.senses.compass,
         "ground": life.senses.ground,
         "up": life.senses.up,
+        "load": life.senses.load,
         "blocks": rows,
     }
     if args.save and life.brain is not None:

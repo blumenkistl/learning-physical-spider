@@ -41,7 +41,7 @@ def test_newborn_first_moments():
     assert life.has_pending()
     assert life.moments == 5 and life.refusals == 0
     d = life.describe()
-    assert d["neurons"] == 680 and d["pending"] and d["placement"]["backend"] == "cpu"
+    assert d["neurons"] == 744 and d["pending"] and d["placement"]["backend"] == "cpu"
 
 
 class StubBrain:
@@ -215,7 +215,7 @@ def test_the_observation_codes_are_genes(tmp_path):
     fixed = compose(0, genes_from_text("code=64"), backend="cpu")
     assert fixed.describe()["layout"]["code"]["kind"] == "code"
     assert len(fixed.connectome.populations["sensory"]) == 64 and fixed.inputs == INPUTS
-    learned = compose(0, genes_from_text("learned_code=64 learned_code_fields=384,32,56,8"), backend="cpu")
+    learned = compose(0, genes_from_text("learned_code=64 learned_code_fields=384,32,56,64,8"), backend="cpu")
     assert learned.describe()["layout"]["code"]["kind"] == "learned"
     assert len(learned.connectome.populations["code"]) == 64
     assert learned.learned_code.field_units is not None and sum(learned.learned_code.field_units) == 64

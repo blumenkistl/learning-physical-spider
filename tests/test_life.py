@@ -4,6 +4,7 @@ import math
 import numpy as np
 import pytest
 
+from spider.body import ARENA_RADIUS
 from spider.model import JOINTS, LEGS
 from spider.brain import SpiderBrain
 from spider.life import law_text, BLOCK, PROGRESS_PAY, UPRIGHT, Life, pay
@@ -540,6 +541,24 @@ def test_the_up_sense_is_a_birth_option_saved_with_the_life(tmp_path):
     assert "the up sense" in life.notes[0] and life.policy.brain.inputs == 8 * 55 + 8
 
 
+def test_the_load_sense_is_a_birth_option_saved_with_the_life(tmp_path):
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", senses=Senses(load=True))
+    assert life.describe()["load"] is True and life.describe()["inputs"] == 8 * 60 + 8
+    for _ in range(3):
+        life.tick()
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    assert again.load()["custody"] == "kept"
+    assert again.senses.load is True and again.policy.brain.inputs == 8 * 60 + 8
+    assert any("the load sense" in note for note in again.notes)
+    for _ in range(3):
+        assert life.tick()["pose"] == again.tick()["pose"]
+    born = life.control("reset", {"load": False})
+    assert born["load"] is False and life.policy.brain.inputs == 8 * 52 + 8 and "load sense" not in life.notes[0]
+    life.control("reset", {"load": True})
+    assert "the load sense" in life.notes[0] and life.policy.brain.inputs == 8 * 60 + 8
+
+
 def test_a_life_saved_before_the_up_sense_continues_without_it(tmp_path):
     import json
     life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", senses=Senses(compass=True, ground=True))
@@ -570,7 +589,7 @@ def test_the_ground_sense_is_a_birth_option_saved_with_the_life(tmp_path):
     assert life.senses.ground is False and life.senses.compass is True and life.policy.brain.inputs == 8 * 54 + 8
     assert "a compass" in life.notes[0] and "ground" not in life.notes[0]
     life.control("reset", {"ground": True, "compass": False})
-    assert life.senses.options() == {"per": 8, "compass": False, "ground": True, "up": False}
+    assert life.senses.options() == {"per": 8, "compass": False, "ground": True, "up": False, "load": False}
     assert "the ground sense" in life.notes[0] and life.policy.brain.inputs == 8 * 54 + 8
 
 
@@ -639,11 +658,11 @@ def test_the_displacement_is_from_the_birth_point_and_survives_recentres_and_sav
     assert life.displacement_m() == pytest.approx(math.hypot(*walked))
     assert life.latest["displacement_m"] == pytest.approx(life.displacement_m(), abs=1e-4)
     # the body past the arena's edge: the next moment recentres it, the displacement keeps counting
-    place(life.body, x=5.5, y=0.3)
+    place(life.body, x=ARENA_RADIUS + 0.5, y=0.3)
     before = life.displacement_m()
     life.tick()
     assert life.recentres == 1 and life.body.x == 0.0 and life.body.y == 0.0
-    assert abs(life.displacement_m() - before) < 0.02     # one moment's step, no jump of 5.5 m
+    assert abs(life.displacement_m() - before) < 0.02     # one moment's step, no jump of the arena radius
     # a recentre by hand neither
     place(life.body, x=1.0)
     life.control("recentre")
@@ -1066,3 +1085,121 @@ def test_a_touchdown_is_counted_only_after_the_idle_moments_aloft(tmp_path):
     assert before and down > 0                              # the newborn stands on its feet
     assert life.touchdowns == down
     assert life.reward == pytest.approx(min(0.5, 0.05 * down + life._block[-1]["terms"]["progress"]), abs=1e-9)
+
+
+def test_the_living_brains_entropy_is_retuned_noted_and_saved(tmp_path):
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu", genes={"entropy": 0.03})
+    for _ in range(12):
+        life.tick()
+    assert life.brain.has_pending() and life.entropy() == pytest.approx(0.03)
+    out = life.control("entropy", 0.1)                     # retuned with an act pending
+    assert out["changed"] and out["was"] == pytest.approx(0.03) and life.entropy() == pytest.approx(0.1)
+    assert life.gene_changes == [{"moment": 12, "entropy": 0.1}]
+    assert "entropy changed at moment 12" in life.notes[-1] and "schedule of genes" in life.notes[-1]
+    assert life.control("entropy", 0.1)["changed"] is False and len(life.gene_changes) == 1
+    assert life.genes == {"entropy": 0.03}                  # the birth stays the birth
+    for _ in range(6):
+        assert not life.tick()["refused"]
+    d = life.describe()
+    assert d["entropy"] == pytest.approx(0.1) and d["gene_changes"] == life.gene_changes
+    for bad in (-0.1, 1.5, float("nan"), "much"):
+        with pytest.raises(ValueError):
+            life.set_entropy(bad)
+    life.save()
+    again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.entropy() == pytest.approx(0.1) and again.gene_changes == life.gene_changes
+    for _ in range(6):
+        a, b = life.tick(), again.tick()
+        assert a["commands"] == b["commands"] and a["reward"] == b["reward"]
+    again.reset({"seed": 1})
+    assert again.gene_changes == [] and again.entropy() == pytest.approx(0.03)
+
+
+def test_entropy_turned_on_from_zero_is_not_refused(tmp_path):
+    # an act sampled at entropy 0 keeps no policy for the entropy term; a live life (moment
+    # 4,487,148 on) refused that act's outcome at every retry after a retune from 0, and the
+    # owed reward grew; the wrapper now delivers it under the entropy it was sampled at
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu", genes={"entropy": 0.0})
+    for _ in range(12):
+        life.tick()
+    for entropy in (0.02, 0.0, 0.05):
+        assert life.control("entropy", entropy)["changed"]
+        for _ in range(6):
+            assert not life.tick()["refused"], life.brain.last_error
+    assert life.brain.refusals == 0 and life.brain.owed is None
+
+
+def test_a_life_without_a_brain_refuses_the_entropy(tmp_path):
+    life = Life("random", seed=0, pace=0, runs=tmp_path)
+    assert life.entropy() is None
+    with pytest.raises(ValueError):
+        life.set_entropy(0.1)
+
+
+def test_the_arena_is_the_worlds_law_set_counted_and_saved(tmp_path):
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    for _ in range(12):
+        life.tick()
+    d = life.describe()
+    assert d["reward"]["arena"] == "flat" and set(d["terrains"]) == {"hills", "steep"} and len(d["terrains"]["steep"]) == 4
+    assert "hills" not in law_text(life.law())
+    with pytest.raises(ValueError):
+        life.set_law({"arena": "mountains"})
+    change = life.set_law({"arena": "hills"})
+    assert change["changed"] and life.body.arena == "hills" and len(life.law_changes) == 1
+    assert law_text(life.law()).endswith("hills") and life.latest["pose"]["arena"] == "hills"
+    for _ in range(6):
+        assert not life.tick()["refused"]
+    life.save()
+    again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.arena == "hills" and again.body.arena == "hills" and again.law() == life.law()
+    for _ in range(6):
+        a, b = life.tick(), again.tick()
+        assert a["commands"] == b["commands"] and a["pose"] == b["pose"] and a["reward"] == b["reward"]
+    again.reset({"seed": 1})
+    assert again.body.arena == "hills"                        # the law is the life's world, kept over a birth
+
+
+def test_a_life_saved_before_the_arena_stands_on_flat_ground(tmp_path):
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    life.tick()
+    life.save()
+    sidecar = tmp_path / "spider.json"
+    state = json.loads(sidecar.read_text())
+    del state["law"]["arena"], state["world"]["arena"], state["world"]["offset"]
+    sidecar.write_text(json.dumps(state))
+    again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu", arena="steep")
+    again.load()
+    assert again.arena == "flat" and again.body.arena == "flat"
+
+
+def test_the_living_brains_need_is_retuned_noted_and_saved(tmp_path):
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu", genes={"arousal": {"need": 0.1}})
+    for _ in range(12):
+        life.tick()
+    assert life.need() == pytest.approx(0.1)
+    out = life.control("need", 0.05)
+    assert out["changed"] and out["was"] == pytest.approx(0.1) and life.need() == pytest.approx(0.05)
+    assert life.brain.brain.arousal.config.need == pytest.approx(0.05)
+    assert life.gene_changes == [{"moment": 12, "need": 0.05}]
+    assert "need changed at moment 12" in life.notes[-1] and "schedule of genes" in life.notes[-1]
+    assert life.control("need", 0.05)["changed"] is False and len(life.gene_changes) == 1
+    assert life.genes == {"arousal": {"need": 0.1}}           # the birth stays the birth
+    for _ in range(6):
+        assert not life.tick()["refused"]
+    d = life.describe()
+    assert d["need"] == pytest.approx(0.05) and d["gene_changes"] == life.gene_changes
+    for bad in (-0.1, 0.6, float("nan"), "much"):
+        with pytest.raises(ValueError):
+            life.set_need(bad)
+    life.save()
+    again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.need() == pytest.approx(0.05) and again.gene_changes == life.gene_changes
+    for _ in range(6):
+        a, b = life.tick(), again.tick()
+        assert a["commands"] == b["commands"] and a["reward"] == b["reward"]
+    again.reset({"seed": 1})
+    assert again.gene_changes == [] and again.need() == pytest.approx(0.1)
