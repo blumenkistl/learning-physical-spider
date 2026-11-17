@@ -146,7 +146,7 @@ def test_flags_mirror_the_nursery_and_the_environment_sets_defaults(tmp_path, mo
     monkeypatch.setenv("OLD_GROUND", "0.2")
     assert arguments([]).old_ground == 0.2 and arguments(["--old-ground", "0.5"]).old_ground == 0.5
     assert life_from(arguments(["--high-water", "--policy", "random", "--runs", str(tmp_path)])).old_ground == 0.2
-    assert arguments([]).layout == "joint" and arguments(["--layout", "leg"]).layout == "leg"
+    assert arguments([]).layout == "pair" and arguments(["--layout", "leg"]).layout == "leg"
     monkeypatch.setenv("LAYOUT", "leg")
     assert life_from(arguments(["--high-water", "--policy", "random", "--runs", str(tmp_path)])).policy.layout == "leg"
     monkeypatch.setenv("COMPASS", "1")

@@ -47,6 +47,8 @@ from .model import (DT, HIP_RANGE, JOINTS, KNEE_RANGE, LIFT_RANGE, LEG_NAMES, LE
 
 SUBSTEPS = round(DT / TIMESTEP)
 ARENA_RADIUS = 10.0
+RESTORE_SUNK = 0.01                       # m: a restored body deeper in the ground than this lies on a ground laid
+                                          # since the save (a body at rest sinks under a millimetre), and is raised
 # The hills: (wavelength m, direction rad, amplitude m, phase rad) of each long wave over the
 # world's x, y; their sum is the ground's height. learning-spider's (spider/body.py, 2026-11-14),
 # fixed, the same world for every life: up to about 6 cm either way, slopes mostly under 0.11.
@@ -120,6 +122,16 @@ ROCK_PLATEAU_SHIFT = (-16.0, -11.0)      # where the plateaus' lattice starts: c
 ROCK_PLATEAU_ROCKY = 0.5                 # the share of plateaus of rock: grey, with the small rocks lying on them
 ROCK_PLATEAU_STRETCH = 0.8               # its narrowest across its length
 ROCK_PLATEAU_SLOPE = (0.3, 0.5)          # its ramps, rise per run (17 to 32 degrees across the stretch): to be climbed
+# The rocks' floor rolls: long waves under everything, the hills' waves at ROCK_HILLS_STRETCH times
+# their length, each a (1 + cos) so the valleys lie at 0 and the crests no higher than the sum of
+# ROCK_HILLS_HEIGHT's amplitudes, below the lowest plateau's top. A plateau rises out of them: where
+# its surface is above the hills it is the ground, so its top stays level and its ramps run down
+# into the hillside. The rocks lie on whichever is higher. Chosen, not measured (2026-11-17, on the
+# owner's ask): crests up to 14 cm over valleys 5 to 12 m apart, slopes under 0.1.
+ROCK_HILLS_STRETCH = 2.0
+ROCK_HILLS_HEIGHT = 0.07                  # m: the waves' amplitudes summed, half the crest's height
+ROCK_HILLS = tuple((ROCK_HILLS_STRETCH * w, d, round(ROCK_HILLS_HEIGHT * a / sum(h[2] for h in HILLS), 5), ph)
+                   for w, d, a, ph in HILLS)
 ROCK_STEP = 0.01                          # m between the field's samples on the rocks: the edges stay sharp
 ROCKY = ("rocks",)
 ARENAS = ("flat",) + tuple(TERRAINS) + GRAINED + ROCKY   # the ground: the plane z = 0 (the founder), or a terrain
@@ -282,9 +294,19 @@ def _cached_shape(i: np.ndarray, j: np.ndarray, layer: int) -> dict:
     return {name: np.stack([row[name] for row in rows], axis=-1) for name in rows[0]}
 
 
+def _rock_hills(x, y) -> np.ndarray:
+    """The rocks' rolling floor at ``x``, ``y``: each of ``ROCK_HILLS``' waves as amplitude times
+    (1 + cos), 0 in the deepest valley."""
+    h = np.zeros(np.broadcast(x, y).shape)
+    for w, d, a, ph in ROCK_HILLS:
+        k = 2 * math.pi / w
+        h = h + a * (1.0 + np.cos(k * math.cos(d) * x + k * math.sin(d) * y + ph))
+    return h
+
+
 def _rocks_height(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """The rocks' ground under ``x``, ``y``: per point its plateau's height (0 off one) plus the
-    higher of its cells' rocks, small and giant (0 off them)."""
+    """The rocks' ground under ``x``, ``y``: per point the higher of the hills and its plateau
+    (0 off one), plus the higher of its cells' rocks, small and giant (0 off them)."""
     h = {}
     for layer, cell in ((SMALL, ROCK_CELL), (GIANT, ROCK_GIANT_CELL), (PLATEAU, ROCK_PLATEAU_CELL)):
         sx, sy = _shift(layer)
@@ -292,13 +314,14 @@ def _rocks_height(x: np.ndarray, y: np.ndarray) -> np.ndarray:
         cells, inverse = np.unique(np.stack([i.reshape(-1), j.reshape(-1)]), axis=1, return_inverse=True)
         r = {name: v[..., inverse.reshape(-1)] for name, v in _cached_shape(cells[0], cells[1], layer).items()}
         h[layer] = _rock_surface(r, x.reshape(-1), y.reshape(-1))
-    return (h[PLATEAU] + np.maximum(h[SMALL], h[GIANT])).reshape(x.shape)
+    under = np.maximum(_rock_hills(x.reshape(-1), y.reshape(-1)), h[PLATEAU])
+    return (under + np.maximum(h[SMALL], h[GIANT])).reshape(x.shape)
 
 
 def _rocks_field(xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
     """``_rocks_height`` over the lattice ``xs`` (columns) by ``ys`` (rows), rock by rock over its
     own patch only: the same heights, without visiting the bare ground under every rock's law."""
-    field, plateaus = np.zeros((ys.size, xs.size)), np.zeros((ys.size, xs.size))
+    field, plateaus = np.zeros((ys.size, xs.size)), _rock_hills(xs[None, :], ys[:, None])   # the plateaus rise out of the hills
     for layer, cell in ((SMALL, ROCK_CELL), (GIANT, ROCK_GIANT_CELL), (PLATEAU, ROCK_PLATEAU_CELL)):
         sx, sy = _shift(layer)
         i, j = np.meshgrid(np.arange(math.floor((xs[0] - sx) / cell) - 1, math.floor((xs[-1] - sx) / cell) + 2),
@@ -321,7 +344,7 @@ def _lay_rocks(field: np.ndarray, shape: dict, xs: np.ndarray, ys: np.ndarray) -
 def ground_height(arena: str, x, y) -> np.ndarray:
     """The ground's height in metres at world points ``x``, ``y`` (the terrain's own frame: the
     body's place plus the field's ``offset``): 0 on ``flat``, the sum of the arena's waves on
-    ``hills`` and ``steep``, the lattice's on ``rough``, a rock's or 0 on ``rocks``. MuJoCo's field
+    ``hills`` and ``steep``, the lattice's on ``rough``, the hills, a plateau and a rock on ``rocks``. MuJoCo's field
     joins these heights, sampled every ``terrain_step``, by flat triangles."""
     x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
     h = np.zeros(np.broadcast(x, y).shape)
@@ -347,7 +370,7 @@ def _relief(arena: str) -> float:
     if arena in GRAINED:
         return GRAIN_HEIGHT
     if arena in ROCKY:
-        return max(ROCK_PLATEAU_HEIGHT[1] + ROCK_BIG_HEIGHT[1], ROCK_GIANT_HEIGHT[1])   # no giant on a plateau
+        return max(ROCK_PLATEAU_HEIGHT[1] + ROCK_BIG_HEIGHT[1], 2 * ROCK_HILLS_HEIGHT + ROCK_GIANT_HEIGHT[1])   # no giant on a plateau
     return float(np.abs(_WAVES[arena][:, 2]).sum())
 
 
@@ -407,7 +430,9 @@ class Spider:
         self._claws = np.array(claws) if all(g >= 0 for g in claws) else None
         self._head = mujoco.mj_name2id(self.model, geom, "head")
         self._belly = {mujoco.mj_name2id(self.model, geom, n) for n in ("body", "waist", "abdomen")}
-        lo, hi = self.model.actuator_forcerange[:, 0].copy(), self.model.actuator_forcerange[:, 1].copy()
+        self._abdomen = mujoco.mj_name2id(self.model, geom, "abdomen")
+        self.data.ctrl[JOINTS:] = 1.0             # the soles' adhesion, if the body has it: fixed, never commanded
+        lo, hi = self.model.actuator_forcerange[:JOINTS, 0].copy(), self.model.actuator_forcerange[:JOINTS, 1].copy()
         self._force_low, self._force_high = -lo, hi   # each muscle's most, either way (the lift raises with less)
         self._qpos = np.array([self.model.jnt_qposadr[mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{n}_{j}")]
                                for n in LEG_NAMES for j in ("hip", "lift", "knee")])
@@ -435,14 +460,19 @@ class Spider:
         return ground_height(self.arena, np.asarray(x, dtype=float) + self.offset[0],
                              np.asarray(y, dtype=float) + self.offset[1])
 
+    def _sunk(self) -> float:
+        """How deep the body lies inside the ground, in metres (0 above it)."""
+        sunk = 0.0
+        for c in self.data.contact[: self.data.ncon]:
+            if self._floor in (int(c.geom1), int(c.geom2)):
+                sunk = max(sunk, -float(c.dist))
+        return sunk
+
     def _settle(self) -> None:
         """Raise the body, pose, velocity and heading kept, until nothing of it is inside the ground:
         a body set on a new ground stands on it (or lies on it) and drops the rest of the way."""
         for _ in range(20):
-            sunk = 0.0
-            for c in self.data.contact[: self.data.ncon]:
-                if self._floor in (int(c.geom1), int(c.geom2)):
-                    sunk = max(sunk, -float(c.dist))
+            sunk = self._sunk()
             if sunk <= 1e-4:
                 return
             self.data.qpos[2] += sunk + 1e-4
@@ -474,7 +504,7 @@ class Spider:
     @property
     def targets(self) -> np.ndarray:
         """``(8, 3)``: the servos' setpoints."""
-        return self.data.ctrl.reshape(LEGS, PER_LEG).copy()
+        return self.data.ctrl[:JOINTS].reshape(LEGS, PER_LEG).copy()
 
     @property
     def x(self) -> float:
@@ -569,6 +599,15 @@ class Spider:
             return self.z
         return self.z - float(self.ground(self.x, self.y))
 
+    @property
+    def abdomen_height(self) -> float:
+        """The abdomen centre's height above the ground under it (a reading: the torso's ``height``
+        is the prosoma's, and a body can hold that up on its front legs and sit on its abdomen)."""
+        x, y, z = (float(v) for v in self.data.geom_xpos[self._abdomen])
+        if self.arena == "flat":
+            return z
+        return z - float(self.ground(x, y))
+
     def head_down(self) -> bool:
         """Whether the head sphere touches the floor now (a reading: nothing pays or charges it)."""
         for c in self.data.contact[: self.data.ncon]:
@@ -599,13 +638,13 @@ class Spider:
         cmd = np.asarray(commands).reshape(-1)
         if cmd.shape != (JOINTS,) or not np.all(np.isin(cmd, (0, 1, 2))):
             raise ValueError("commands must be twenty-four of 0, 1 or 2")
-        ctrl = self.data.ctrl
+        ctrl = self.data.ctrl[:JOINTS]
         ctrl[:] = np.where(cmd == 0, LOW, np.where(cmd == 2, HIGH, ctrl))
         x0, y0, h0 = self.x, self.y, self.heading
         effort = 0.0
         for _ in range(SUBSTEPS):                 # the same steps as one call of nstep=SUBSTEPS, read as they go
             mujoco.mj_step(self.model, self.data)
-            force = self.data.actuator_force
+            force = self.data.actuator_force[:JOINTS]
             effort += float(np.where(force > 0, force / self._force_high, -force / self._force_low).mean())
         # mj_step leaves the derived quantities (frames, contacts) at the start of its last
         # substep; bring them to the state reached, as a restore does, so the senses read the
@@ -672,6 +711,8 @@ class Spider:
         mujoco.mj_forward(spider.model, spider.data)
         spider.moments = int(saved["moments"])
         spider.recentres = int(saved["recentres"])
+        if spider._sunk() > RESTORE_SUNK:         # the arena's ground was changed under the save: stand on the new one
+            spider._settle()
         spider.planted_before = np.array(saved["planted_before"], dtype=bool)
         return spider
 

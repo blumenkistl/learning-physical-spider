@@ -46,13 +46,15 @@ window on that one life.
   `idle_leg_pay` (taken per leg whose foot stays off the floor past `idle_moments`, weighed by
   the foot's height up to `idle_height`) after a leg hung up for good, and `low_pay` (taken by
   how far the torso sits below its ride height) after a body lay on its belly with its legs lowered,
+  and `rear_pay` (taken by how far the abdomen sits below its ride height) after a body sat on its
+  abdomen with its prosoma held up,
   and `head_pay` (taken while the head touches the floor) after a body leant on its nose, and
   `touchdown_pay` (given per leg set down after `idle_moments` aloft) after legs held no preference
   under the held-up-leg charge; all are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
   (off by default, measured dose, labelled as shaping).
 - **The arena is the world's, not the body's.** `flat` (the plane, the founder), `hills` or
   `steep` (learning-spider's waves, steep at 2.5 times hills, as a MuJoCo height field, `spider/body.py`),
-  `rough` (level but grained, ±3 mm every centimetre, the same height field), or `rocks` (level with
+  `rough` (level but grained, ±3 mm every centimetre, the same height field), or `rocks` (rolling hills up to 14 cm with
   angular rocks lying on it, blocks and spikes 2 to 8 cm high, boulders up to 18 cm and giants up to 60 cm, and level plateaus up to 40 cm high and 8 m or more across with ramps all round, bare or of rock with rocks on them, the same height field). The arena does not
   change `MODEL_DIGEST`; it is set, shown, saved and counted with the law like any law setting,
   named in every reading, and a recentre moves the ground with the body. The brain senses no

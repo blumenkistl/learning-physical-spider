@@ -9,8 +9,9 @@ hand-made laws. The body has mass and can tilt, slip, stumble and fall.
 tested, including custody, save and load, the law and the controls. The server serves the page
 at `/` and the life's API (`/api/state`, `/api/describe`, `/api/control`, `/ws`). The page draws
 the torso by its quaternion and the legs from MuJoCo's world points. It shows upright, tilt and
-falls. What came over from learning-spider, and how, is in [PORTING.md](PORTING.md). Nothing has
-been measured yet.
+falls. What came over from learning-spider, and how, is in [PORTING.md](PORTING.md). One thing is
+measured on newborns: a start law that brings three of four off the belly ("How to get your spider
+running"). Walking straight is not yet learned; everything else is readings or unmeasured.
 
 ```
 .venv/bin/python -m spider.nursery --moments 3000 --policy brain --seed 0
@@ -31,6 +32,89 @@ moments with the belly (body, waist or abdomen) on the floor, overall and among 
 (`belly_share`, `belly_upright_share`), and the share of an upright moment's legs held up past
 the idle moments (`idle_leg_share`, the count `idle_leg_pay` charges). None of them is paid; they
 say whether a fall is a problem the world poses or a place the body can live in.
+
+## How to get your spider running
+
+A newborn under the shipped law, which pays forward progress and nothing else, lies on its belly
+and does not get up. On this body (`1f1a83c1a66b9def`, flat) it is brought up in two stages: first
+to stand, then to walk. The first stage is measured on newborns; the second is the path of one
+life and is still open. The settings are shaping (README, "The reward"), chosen on the owner's
+judgement and labelled so.
+
+### Stage 1: stand up (measured on newborns)
+
+```bash
+.venv/bin/python server.py --port 8081 --runs runs/mine --seed 22 \
+  --layout pair --compass --ground --up --load --gene hold=0.9 --gene arousal.need=0.1 \
+  --stance-pay 0.08 --stance-floor 3 --stand-pay 0.06 --carry --carry-back \
+  --low-pay 0.1 --rear-pay 0.1 --head-pay 0.01 --touchdown-pay 0.05 --upright-pay 0.01 \
+  --course 1.238 --backward-pay 1 --pay-per-metre 60
+```
+
+The same flags work for `spider.nursery`. Entropy stays at the founder's 0.1, and `idle_leg_pay`
+stays at 0. Under this law the worst charge is 0.47, against a cap of 0.5.
+
+Eight newborns (seeds 20 to 27), 300,000 moments each (2026-11-17). The table gives readings over
+the last 30,000 moments, as the mean of each group's four lives:
+
+| `stance_pay` | Lives off the belly (belly < 50 %) | Belly down | Feet planted | Abdomen carried (> 0.125 m) | Falls |
+| --- | --- | --- | --- | --- | --- |
+| 0.08 (seeds 20 to 23) | 3 of 4 (15 %, 20 %, 32 %; seed 23 68 %) | 34 % | 1.86 | 50 % | 0 to 2 |
+| 0.02 (seeds 24 to 27) | 0 of 4 | 76 % | 0.83 | 10 % | 5 to 15 |
+
+The earlier start law had no `rear_pay`, `stance_pay` 0.02 and `low_pay` 0.04. Under it none of
+eight newborns (seeds 10 to 17, 150,000 moments each) came below 60 % belly down.
+
+`rear_pay` is the difference that mattered. A body can hold its prosoma up on its front legs and
+sit on its heavy abdomen. `low_pay` reads only the prosoma, so it charges nothing for that.
+
+In the live life (seed 0), "belly down" was the abdomen in 97 % of the belly-down moments; the
+prosoma was 7 %. The rear legs lay on femur and tibia. On copies of that life, 150,000 moments
+each, the dose acted in order:
+
+| `rear_pay` | Belly down | Abdomen carried |
+| --- | --- | --- |
+| 0 | 70 to 78 % | 9 to 13 % |
+| 0.05 | 64 to 75 % | 10 to 17 % |
+| 0.1 | 52 to 65 % | 17 to 30 % |
+
+The live life then got up about 12,000 moments after `rear_pay` 0.1, at moment 2,380,000. It
+went from 1.0 to 1.6 to 1.9 feet planted, and its belly-down samples fell from 60 to 90 % to 13 %.
+
+"Stand" here is not yet a clean stance on four feet. Two newborns were probed for 3,000 moments
+(seeds 20 and 22) and carried themselves like this:
+
+- They stood mainly on a diagonal pair of rear feet: R4 and L3, or L4 and R3, about 70 % of the
+  moments.
+- The front legs (leg 1) lay on femur and tibia, propping the front.
+- The head touched in 13 to 21 % of the moments, and the abdomen in 26 %.
+- The torso was near level, pitch ±0.04 rad.
+
+### Stage 2: walk (one life's path, open)
+
+From a standing body, the live life (seed 0, `pair`, need 0.2) went through these steps. They are
+one schedule, read as readings, not a recipe:
+
+1. **Lower the stance charge once the body stands.** `stance_pay` went from 0.08 to 0.02 to 0.01
+   (moments 2,400,834 and 2,417,307). This took the reward off the cap: capped moments fell from
+   19 % to about 5 %, and the body kept standing.
+2. **Make backward cost less, then pay only nose first.** `backward_pay` went from 1 to 0.3
+   (moment 2,434,365), and then `strict` came on (2,438,466). Before that the body walked mostly
+   backward, −0.4 to −3.1 m along its nose per 2,000 moments: the course pays motion along a fixed
+   heading, whatever the nose does. After about 8,000 moments under `strict` it walked nose first,
+   +0.2 to +2.0 m per 2,000 moments in 11 of 13 stretches.
+3. **The circle.** The body turns all the while, 25 to 35 rad per 2,000 moments. Under the course
+   a circle nets nothing, and under `strict` half of it costs. After about 30,000 moments the
+   forward walk faded to ±0.5 m per 2,000 moments.
+
+   With the course off (moment 2,513,651, `pay_per_metre` 100 to 150) the body walks nose first
+   again, +2 to +5 m per 5,000 moments. It turns 58 to 71 rad meanwhile, a radius of about 6 cm:
+   it spins on the spot, and its displacement from birth stayed at 44 to 50 m over 55,000
+   moments.
+
+Walking straight is not solved. The levers left are `yaw_pay`, the course without `strict`, and
+`window`. None is measured on this body. `yaw_pay` was ignored at 0.1 and 1 on an earlier body,
+and at 5 that body stood still.
 
 ## Why a physics engine
 
@@ -273,6 +357,14 @@ each off in the shipped law, and one setting of the outcome (`carry`):
   `low_pay` and then leant on its nose, pitched 0.25–0.33 rad down with the head on the floor in
   a quarter of the moments, standing on the head and 1.6 feet with the rest free (2026-11-15,
   240,000 moments). Added on the owner's choice. Unmeasured.
+- `rear_pay` (`--rear-pay`, the page's law panel, "rear"): taken by how far the abdomen's centre
+  sits below its ride height: nothing at 0.14 m and up, all of it at 0.11 m and down, straight
+  between. A body holding its joints carries it at 0.144 m, and one standing on lowered lifts and
+  knees at 0.181 m. While it touched the floor it sat at 0.110 to 0.119 m (readings on body
+  `1f1a83c1a66b9def`). `low_pay` reads the prosoma only. A live body (seed 0) held the prosoma at
+  0.11 m on its front legs and sat on its abdomen, with the belly down in 78 % of the moments, for
+  2.2 million moments (2026-11-17). Added on the owner's choice. Its dose is measured in "How to
+  get your spider running".
 - `touchdown_pay` (`--touchdown-pay`, the page's law panel, "touchdown"): given per leg whose
   foot comes down after more than `idle_moments` off the floor, while upright; each block counts
   its `touchdowns`, the nursery `touchdowns_per_1000`. The held-up-leg charge is a state, and a
@@ -286,6 +378,14 @@ each off in the shipped law, and one setting of the outcome (`carry`):
   is off the floor, so a body pushed along on its belly earns nothing forward; backward is
   charged as ever. Not a hint on top but the outcome paid only for a carried body. Added with
   `stand_pay`, off by default. Unmeasured.
+- `carry_back` (`--carry-back`, the page's law panel, "carried backward free"; on by default,
+  acting only under `carry`): backward progress on the belly is not charged either, so the
+  progress term is 0 while the belly is down. Added on the owner's choice (2026-11-17) after a
+  live newborn under `carry` and `backward_pay` 1 lay on its belly with every lift at its lower
+  stop, its knees bent and its feet 2 to 3 cm off the floor, 0.2 feet planted over 300,000
+  moments: forward paid nothing and backward cost in full, so every foot set down, sliding the
+  body both ways, was a cost. A life saved before keeps the charge (`--no-carry-back`, "carried,
+  backward charged"). Unmeasured.
 - `torque_pay` (`--torque-pay`, the page's law panel): taken per unit of the moment's effort,
   the muscles' torque as a share of each one's most in the direction it pulls, over the
   twenty-four and the moment's fifty steps (0 slack, 1 all at full strength throughout; the
@@ -381,7 +481,7 @@ measures of the claw probe):
 | grain 2 cm, ±5 mm | none | 0.65 / 0.60 | 13.8 | 1.1 |
 | grain 2 cm, ±5 mm | 20 mm | 0.68 / 0.60 | 14.0 | 1.1 |
 
-`rocks` is this project's own too, added on the owner's ask (2026-11-16): level ground with
+`rocks` is this project's own too, added on the owner's ask (2026-11-16): rolling ground with
 rocks lying on it, angular, some pointed, some large. The plane is cut into cells 60 cm a side
 (`ROCK_CELL`); the rough ground's hash of the cell (the same in every life) says whether it holds a
 rock (65 in 100, `ROCK_SHARE`) and its shape. A rock is a convex block wholly inside a circle round
@@ -412,7 +512,12 @@ enough that no ramp is cut: higher ground for the body to climb. Half of them
 spikes and boulders lying on them as on the floor; the others are bare, no rock reaching their
 foot, and no giant reaches any plateau's. The ground is the plateau's height plus the rocks'. No plateau's foot reaches within 70 cm of the origin. Chosen, not
 measured: whether a body climbs the ramps is unread. No rock lies within 70 cm of the origin (`ROCK_CLEAR`), so a
-newborn stands on level ground. The field is sampled every centimetre (`ROCK_STEP`) so the edges
+newborn stands on bare ground. Under everything the floor rolls in hills, added on the owner's ask
+(2026-11-17): the hills' four waves at twice their length (`ROCK_HILLS_STRETCH`, 2.6 to 6.2 m), each
+an amplitude times (1 + cos), so the valleys lie at 0 and the crests at most 14 cm up
+(`ROCK_HILLS_HEIGHT`, half of it summed), below the lowest plateau's top, with slopes under 0.12.
+A plateau rises out of the hills where its surface is above them, so its top stays level and its
+ramps run down into the hillside; the rocks lie on whichever is higher. Chosen, not measured. The field is sampled every centimetre (`ROCK_STEP`) so the edges
 stay sharp; the page draws each rock from the same hash on the same lattice, flat shaded, each in a
 grey of its own from dark basalt to pale limestone, cool or warm (the page's, not the world's). The numbers are chosen, not measured: the
 abdomen rides about 3.4 cm above the floor and a foot lifts to about 40 cm, so the low rocks pass
@@ -513,6 +618,70 @@ the stance carry it), and it stays upright everywhere. The grippier pad walks st
 takes the ratchet's work away: on the plane the shuffle falls from 13.9 to 3.2 cm/s and the
 tetrapod from 8.7 to 3.3. The pad stays at 0.3. The scripted gait at the quickest beat goes
 6.3 cm/s on steep, so the slow live body is not held back by the pad.
+
+The pad was given the foot's grip, 1.5 (`PAD_MU`), on the owner's choice (2026-11-17): a foot is
+not to be slid forward, but lifted. The body is now `4fe8c740dafbecdc`. The choice followed a copy of
+the live life on `steep` (body `9314a7863d588419`, 1,500 moments from moment 452,796), which stood
+on 2 of its 8 feet on average; the pads bore 36 % of the floor's load and slid at 0.34 m/s
+under it on average, the claws bore 52 % at 0.08 m/s. A foot's hip swept a full 20 moments with
+the lift held, the body standing (flat): at 0.3 every foot slid 20 to 26 cm one way; at 1.5 the
+third and fourth pairs moved about 1 cm, the first and second still 20 to 24 cm. The front feet
+carry a twentieth and a ninth of the weight standing, too little for any grip to hold against a
+hip; at 3.0 the second pair held too, the first did not. Unmeasured in a life; the table above
+says the grippier pad slowed the scripted shuffle and tetrapod.
+
+**Adhesion (2026-11-17, `ADHESION` in `spider/model.py`, 0.03 N, the owner's choice after this probe; body `89b0e5ff345fc868`).** A spider's scopula hairs
+hold a foot that carries no weight; MuJoCo's friction holds only by the weight on it, so a foot
+carrying little is dragged however high its grip. With `ADHESION` above 0 each foot's sphere sits on
+a sole of its own (a body without a joint, fixed to the tibia), and a MuJoCo adhesion actuator on it,
+its control fixed at 1 at birth and never commanded, draws the sole to the floor with that many
+newtons while it touches it. The probe (body `4fe8c740dafbecdc` against its adhesive variants,
+flat unless named, one run each; the weight is 0.29 N):
+
+| adhesion per foot | foot dragged by a full hip sweep, legs I / II / III / IV (cm, + / −) | foot lifted in 20 moments | tetrapod T 4 / 6 / 10 (cm/s) | held on 0.36 on four feet, 100 moments (cm, facing up / down / side) |
+| --- | --- | --- | --- | --- |
+| 0 | 24.2 / 20.3 / 1.2 / 0.9, 3.8 / 4.5 / 0.9 / 0.8 | 43–54 cm | 25.9 / 17.5 / 0.4 | 3.4 / 2.8 / 2.4 |
+| 0.03 N (`89b0e5ff345fc868`) | 4.9 / 5.0 / 4.6 / 3.6, 2.2 / 2.3 / 2.2 / 1.9 | the same | 23.4 / 18.3 / −1.1 | 6.1 / 9.2 / 5.4 |
+| 0.06 N | 3.9 / 4.2 / 4.0 / 3.1, 2.1 / 2.1 / 2.1 / 1.7 | the same | 17.8 / −2.5 / 4.0 | 5.3 / 8.2 / 5.1 |
+| 0.1 N | 3.2 / 3.6 / 3.6 / 2.8, 1.9 / 1.9 / 1.9 / 1.6 | the same | −2.3 / −0.7 / 1.4 | |
+
+From 0.03 N on, no foot is dragged more than 5 cm: the front feet hold as the rear do (the rest is
+the leg's own give). Lifting is unchanged. The scripted tetrapod keeps its pace at 0.03 N and loses
+it from 0.06 N on. A holding body on a slope of 0.36 slid no less with adhesion (a little more), so
+the slipping on `steep` is not the standing body's. The load sense reads the
+adhesion's pull as load: a sole on the floor reads its share of the weight plus 0.03 N (0.10 of the
+weight), so a body standing on all eight reads 1.81 in all. Unmeasured in a life.
+
+**Noslip (2026-11-17, `NOSLIP` 20 and `MEMORY` 64M in `spider/model.py`, the owner's choice; body
+`1f1a83c1a66b9def`).** Coulomb would hold a pad of grip 1.5 on a slope of 0.36, but MuJoCo's soft
+contacts let a foot under a steady sideways load creep, at an even pace that never stops. A body
+standing still with its joints held, on gravity tilted to the slope over the flat floor (one run per
+facing, uphill / downhill / sideways), slid downhill in 600 moments:
+
+| slope, feet down | before (no adhesion) | before, adhesion 0.03 N | noslip 20, no adhesion | noslip 20, adhesion 0.03 N |
+| --- | --- | --- | --- | --- |
+| 0.36, eight | 9.3 / 6.7 / 6.9 cm | 16.2 / 23.6 / 15.7 cm | 0.3 / 0.1 / 0.1 cm | 0.1 / 0.1 / 0.1 cm |
+| 0.36, four | 16.8 / 14.6 / 13.0 cm | 32.9 / 52.5 / 30.5 cm | 0.3 / 0.2 / 0.2 cm | 0.2 / 0.2 / 0.1 cm |
+| 0.6, eight | 16.9 / 10.3 / 11.0 cm | 36.3 / 45.2 / 24.3 cm | 1.7 / 0.3 / 0.1 cm | 0.2 / 0.1 / 0.1 cm |
+| 0.6, four | 46.8 / 23.7 / 21.6 cm | 63.8 / 90.1 / 49.6 cm | 1.8 / 0.6 / 0.3 cm | 1.5 / 0.3 / 0.2 cm |
+
+Under noslip the slide stops within the first 100 moments (the readings at 100, 300 and 600 are the
+same). The other probes under noslip 20 (flat, one run each):
+
+| | no adhesion | adhesion 0.03 N |
+| --- | --- | --- |
+| foot dragged by a full hip sweep, legs I / II / III / IV (cm, + / −) | 24.7 / 21.6 / 0.0 / 0.0, 17.4 / 0.3 / 2.8 / 0.5 | 0.0 everywhere |
+| foot lifted in 20 moments | 44–54 cm | 44–54 cm |
+| scripted tetrapod T 4 / 6 / 10 (cm/s) | 26.0 / −1.8 / −0.3 | 23.1 / 0.1 / −0.1 |
+| random commands on 0.36, 300 moments, drift downhill (cm, two seeds) | 96.1 / 40.2 / 91.2 | 70.1 / 31.6 / 78.8 |
+| time per moment on `steep` under random commands | 3.30 ms | 4.24 ms (2.43 and 2.94 before) |
+
+Without adhesion the lightly loaded front feet are still dragged under noslip, so adhesion stays. The
+scripted tetrapod kept its pace at T 4 and lost it at T 6 (17.5 to 18.3 cm/s before). A body moving
+at random on a slope still drifts: its legs, not the contacts, carry it. The newborn on the `steep`
+crest now stands on four or more feet instead of lying on its belly, and on `rocks` a foot may hang a
+few millimetres above the slope at birth. MuJoCo's arena grew to 64 MB because a body restored sunk in
+the ground overflowed the 15 MB default under noslip (439 contacts). Unmeasured in a life.
 
 **Long strides.** A live body on `hills` (body `9314a7863d588419`) stepped short: over 800
 moments its hips swept 0.14 to 0.60 rad of their 1.2, pushing back 84 % of the time and forward in
@@ -635,6 +804,22 @@ reset. A save from before the arena stands on flat ground. On the terrains the f
 held-up-leg charge's weight) and the torso's height (the low hint and the readings) are read above
 the ground under them. A moment costs about 1.9 ms of physics on the hills against 1.2 on the flat
 (a reading, random commands, the development machine). Unmeasured on this body.
+
+## The founder's hold, entropy and slots (`spider/brain.py`)
+
+From 2026-11-17 the founder's `hold` (the actor's eligibility decay apart from the critic's,
+cadence docs/reward.md) is 0.9, an act remembered over about ten moments, the owner's choice; it
+was none before (gamma times lam, 0.57 a moment), so every reading above that says founder genes
+was made under `hold=none`. Unmeasured on this body; on learning-spider's, hold 0.9 walked below
+none on three seeds of 30,000 moments (+1.12 / +0.23 / −0.56 m against +1.69 / +0.94 / +0.67, its
+README). `hold=none` in the genes gives the old founder's brain.
+
+The same day, the owner's choice too: the founder's `entropy` is 0.1, the docs' dose (0, off, before;
+0.5 for part of that day, found too high) and its slots are a slot per pair (`DEFAULT_LAYOUT`, four slots of twenty-seven, each a
+diagonal pair of legs taking the same answer; a slot per joint before). Both unmeasured on this body
+at these values; readings above that name founder genes and no slots were made under entropy 0 and a
+slot per joint. `entropy=0` in the genes and `--layout joint` (or the page's slots) give the old
+founder's.
 
 ## The entropy, live (`spider/life.py`, the page's "brain, live")
 

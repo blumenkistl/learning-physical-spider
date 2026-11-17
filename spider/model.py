@@ -77,7 +77,7 @@ CLAW_RADIUS = 0.002                     # the sole's level, slanted to the body'
 # A pawl claw (probe, off): the claw on a hinge of its own behind the foot, slanted back and down
 # PAWL_ANGLE from the vertical, against a stop there and folding freely back and up, pressed to the
 # stop by a weak passive spring. A foot slipping backward pushes the tip forward onto the stop and
-# the claw holds; a foot drawn forward folds it and slides on the pad. No muscle, no command.
+# the claw holds; a foot drawn forward folds it and grips on its pad. No muscle, no command.
 PAWL = True                             # on, the owner's choice (2026-11-16) after the probe: body cf9ce740e2b88b70 (off: 2bd499aae3fd2b8b)
                                         # (with the tibia at 0.53; at TIBIA_SHARE 0.45 the body is df58a9084a68f1c6)
 PAWL_ANGLE = 0.5                        # rad from the vertical at the stop; the claw holds while its tip's
@@ -89,7 +89,15 @@ PAWL_PRELOAD = 0.2                      # a twentieth of what a foot of four bea
 PAWL_ARMATURE = 1e-8                    # kg m^2: the claw's own, not the legs' (theirs would make it sluggish)
 PAWL_DAMPING = 2e-6                     # N m s/rad: near critical for the spring and the armature
 PAWL_MU = 1.8                           # the claw's tip
-PAD_MU = 0.3                            # the pad's (the foot sphere's) under a pawl: it slides when the claw folds
+PAD_MU = 1.5                            # the pad's (the foot sphere's) under a pawl: FOOT_MU's grip, so a foot is
+                                        # lifted to be brought forward (the owner's choice, 2026-11-17; 0.3, sliding
+                                        # when the claw folded, until body 9314a7863d588419)
+# Adhesion (probe): each foot's sole draws itself to the floor with ADHESION newtons while it
+# touches it, as a spider's scopula hairs hold without the foot's weight on them. MuJoCo's own
+# adhesion: an actuator on the sole's body whose control is fixed at 1 at birth and never commanded,
+# so no muscle and no choice; its pull adds to the contact's normal force, and so to its grip, and
+# a foot is lifted by pulling it off. 0 builds none (the body is then the one without it).
+ADHESION = 0.03                         # N per foot: on, the owner's choice (2026-11-17) after the probe (README)
 LEG_RADIUS = 0.006
 
 # --- mass, chosen (not measured) ---------------------------------------------------------------
@@ -126,6 +134,12 @@ BELLY_MU = 1.5                          # chosen: torso, head, waist and abdomen
 TIMESTEP = 0.001                        # s: the physics step; a moment is DT / TIMESTEP of them
 DT = 0.05                               # s: one moment of the brain (20 Hz), as in the learning spider
 SOLREF = (0.004, 1.0)                   # contact time constant and damping ratio (stiff, critically damped)
+MEMORY = "64M"                          # MuJoCo's arena for contacts and constraints: its 15 MB default overflowed
+                                        # under noslip when a body lay sunk in the rocks (439 contacts)
+NOSLIP = 20                             # MuJoCo's noslip passes after each solve: its soft contacts let a foot under a
+                                        # steady sideways load creep however high its grip (a body standing still on a
+                                        # slope of 0.36 crept 7 to 9 cm in 600 moments); these passes take the creep out
+                                        # (0.1 to 0.3 cm). Chosen, the owner's choice (2026-11-17); 0 until body 89b0e5ff345fc868
 
 SIDE = (1.0,) * PER_SIDE + (-1.0,) * PER_SIDE   # +1 left, -1 right
 LEG_NAMES = tuple(f"{'L' if s > 0 else 'R'}{i % PER_SIDE + 1}" for i, s in enumerate(SIDE))
@@ -161,10 +175,21 @@ def _leg(i: int) -> str:
           <site name="{name}_ankle" pos="{_f(*ankle)}"/>
           <geom name="{name}_tarsus" type="capsule" fromto="{_f(*ankle, *foot)}" size="{LEG_RADIUS}"
                 mass="{TARSUS_MASS}" class="leg"/>
-          <geom name="{name}_foot" type="sphere" pos="{_f(*foot)}" size="{FOOT_RADIUS}"
-                mass="0" class="{'pad' if PAWL else 'foot'}"/>{_claw(name, yaw, foot)}{_pawl(name, yaw, foot)}
+          {_sole(name, foot)}{_claw(name, yaw, foot)}{_pawl(name, yaw, foot)}
         </body>
       </body>"""
+
+
+def _sole(name: str, foot: tuple[float, float, float]) -> str:
+    """The foot's sphere: on the tibia, or on a sole of its own (a body without a joint, fixed to
+    the tibia) when the feet adhere, so the adhesion pulls the sphere alone."""
+    cls = 'pad' if PAWL else 'foot'
+    if ADHESION <= 0:
+        return f"""<geom name="{name}_foot" type="sphere" pos="{_f(*foot)}" size="{FOOT_RADIUS}"
+                mass="0" class="{cls}"/>"""
+    return f"""<body name="{name}_sole" pos="{_f(*foot)}">
+            <geom name="{name}_foot" type="sphere" size="{FOOT_RADIUS}" mass="0" class="{cls}"/>
+          </body>"""
 
 
 def _claw(name: str, yaw: float, foot: tuple[float, float, float]) -> str:
@@ -213,6 +238,8 @@ def _actuators() -> str:
                      f'ctrlrange="{_f(*LIFT_RANGE)}" forcerange="{_f(-LIFT_TORQUE, LIFT_TORQUE)}"/>')
         lines.append(f'    <position name="{name}_knee" joint="{name}_knee" kp="{KNEE_STIFFNESS}" '
                      f'ctrlrange="{_f(*KNEE_RANGE)}" forcerange="{_f(-KNEE_TORQUE, KNEE_TORQUE)}"/>')
+    if ADHESION > 0:                                # after the twenty-four muscles: the soles' fixed pull
+        lines += [f'    <adhesion name="{n}_sole" body="{n}_sole" ctrlrange="0 1" gain="{ADHESION:g}"/>' for n in LEG_NAMES]
     return "\n".join(lines)
 
 
@@ -230,7 +257,8 @@ def build() -> str:
     legs = "".join(_leg(i) for i in range(LEGS))
     return f"""<mujoco model="learning-physical-spider">
   <compiler angle="radian" autolimits="true"/>
-  <option timestep="{TIMESTEP}" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic"/>
+  <size memory="{MEMORY}"/>
+  <option timestep="{TIMESTEP}" gravity="0 0 -9.81" integrator="implicitfast" cone="elliptic" noslip_iterations="{NOSLIP}"/>
   <default>
     <geom solref="{_f(*SOLREF)}" friction="{LEG_MU} 0.005 0.0001" condim="3"/>
     <joint armature="{ARMATURE}"/>

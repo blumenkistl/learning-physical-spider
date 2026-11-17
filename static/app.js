@@ -64,11 +64,13 @@ const GROUND_COLOUR = '#1b2230';                      // the page's own; the vie
 // The page draws the server's terrain; it never has one of its own.
 let waves = [], offset = [0, 0];
 let plateaus = [];                                     // the rocks arena's raised ground, in the terrain's frame
+let rockHills = [];                                    // the rocks arena's rolling floor: body.py's ROCK_HILLS
 function setArena(name, terrains, at) {
   waves = ((terrains || {})[name] || []).map(([w, d, a, ph]) => [2 * Math.PI / w * Math.cos(d), 2 * Math.PI / w * Math.sin(d), a, ph]);
   offset = at || [0, 0];
   const law = name === 'rocks' && described && described.rocks, reach = GROUND_RADIUS;
   plateaus = [];
+  rockHills = law ? law.hills.map(([w, d, a, ph]) => [2 * Math.PI / w, d, a, ph]) : [];
   if (law)
     for (let i = Math.floor((offset[0] - reach - law.plateau_shift[0]) / law.plateau_cell) - 1; i <= Math.floor((offset[0] + reach - law.plateau_shift[0]) / law.plateau_cell) + 1; i++)
       for (let j = Math.floor((offset[1] - reach - law.plateau_shift[1]) / law.plateau_cell) - 1; j <= Math.floor((offset[1] + reach - law.plateau_shift[1]) / law.plateau_cell) + 1; j++) {
@@ -81,8 +83,16 @@ function plateauHeight(X, Y) {                         // body.py's plateau laye
   for (const r of plateaus) h = Math.max(h, rockHeight(r, X, Y));
   return h;
 }
+function hillsHeight(X, Y) {                          // body.py's _rock_hills at terrain point X, Y
+  let h = 0;
+  for (const [k, d, a, ph] of rockHills) h += a * (1 + Math.cos(k * Math.cos(d) * X + k * Math.sin(d) * Y + ph));
+  return h;
+}
+function floorHeight(X, Y) {                           // the rocks' floor: the higher of the hills and a plateau
+  return Math.max(hillsHeight(X, Y), plateauHeight(X, Y));
+}
 function groundHeight(x, y) {
-  let h = plateaus.length ? plateauHeight(x + offset[0], y + offset[1]) : 0;
+  let h = plateaus.length || rockHills.length ? floorHeight(x + offset[0], y + offset[1]) : 0;
   for (const [kx, ky, a, ph] of waves) h += a * Math.cos(kx * (x + offset[0]) + ky * (y + offset[1]) + ph);
   return h;
 }
@@ -104,7 +114,7 @@ function makeGrid(hex) {                              // the lines follow the gr
   gridHex = hex;
   if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
   const line = new THREE.Color(hex), axes = new THREE.Color(hex).lerp(new THREE.Color('#ffffff'), 0.12);
-  const pos = [], col = [], STEP = waves.length || plateaus.length ? 0.05 : 11;   // flat: each line one segment
+  const pos = [], col = [], STEP = waves.length || plateaus.length || rockHills.length ? 0.05 : 11;   // flat: each line one segment
   for (let i = -Math.floor(GROUND_RADIUS / 0.25); i <= Math.floor(GROUND_RADIUS / 0.25); i++) {
     const c = i === 0 ? axes : line, u = i * 0.25, end = Math.sqrt(Math.max(0, GROUND_RADIUS * GROUND_RADIUS - u * u));   // the grid ends with the ground disc
     for (let t = -end; t < end - 1e-9; t += STEP) {
@@ -197,10 +207,11 @@ function rockMesh(r, law, ox, oy, s, lift = 0) {      // the field's triangles o
   const base = new THREE.Color().setHSL(r.warm < 0.5 ? 0.6 : 0.08, 0.01 + 0.07 * Math.abs(2 * r.warm - 1), 0.2 + 0.42 * r.tone), c = new THREE.Color();   // basalt to limestone, cool or warm grey
   for (let j = j0; j <= j1; j++)
     for (let i = i0; i <= i1; i++) {
-      const h = rockHeight(r, i * s, j * s), under = r.plateau ? lift : plateauHeight(i * s, j * s), speck = (grain(i, j) + 1) / 2;   // a fleck per node, darker at the foot
-      z.push(h);
+      const hills = hillsHeight(i * s, j * s), speck = (grain(i, j) + 1) / 2;   // a fleck per node, darker at the foot
+      const h = rockHeight(r, i * s, j * s), under = r.plateau ? lift : floorHeight(i * s, j * s);
+      z.push(r.plateau ? Math.max(h - hills, 0) : h);   // a plateau of rock shows where it rises out of the hills
       inside.push(Math.hypot(i * s - ox, j * s - oy) <= GROUND_RADIUS);   // cut at the ground's disc, as the ground is
-      position.push(i * s - ox, j * s - oy, under + h);   // a small rock on the plateau of rock it lies on
+      position.push(i * s - ox, j * s - oy, under + (r.plateau ? Math.max(h, hills) : h));   // a small rock on the hill or plateau it lies on
       c.copy(base).multiplyScalar(0.72 + 0.28 * Math.min(1, h / Math.max(r.height, 1e-9) * 1.6) + 0.12 * (speck - 0.5));
       colour.push(c.r, c.g, c.b);
     }
@@ -626,6 +637,17 @@ resize();
 // --- HUD -----------------------------------------------------------------------------------
 const $ = id => document.getElementById(id);
 const fmt = (v, d = 3) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d);
+// The stance hint in one line: what each count of feet down costs at the values in the fields,
+// so the pay and the floor read as the one charge they make (and the stand pay as its other side).
+function stanceSum() {
+  const pay = Number($('law-stance_pay').value) || 0, floor = Math.round(Number($('law-stance_floor').value) || 4);
+  const stand = Number($('law-stand_pay').value) || 0;
+  if (!pay) { $('stance-sum').textContent = `stance off · floor ${floor}` + (stand ? `: stand pay +${stand} from ${floor} feet` : ' acts on nothing'); return; }
+  const steps = [];
+  for (let n = 0; n <= floor; n++) steps.push(`${n}${n === floor && floor < 8 ? '+' : ''}: ${n === floor ? '0' : '−' + fmt(pay * (floor - n), 3)}`);
+  $('stance-sum').textContent = `feet → charge  ${steps.join(' · ')}` + (stand ? ` · stand pay +${stand} from ${floor}` : '');
+}
+for (const id of ['law-stance_pay', 'law-stance_floor', 'law-stand_pay']) $(id).addEventListener('input', stanceSum);
 // A number field keeps its own range: a value past min or max is set back to that end when the
 // field is left, and when it is read (40 typed into backward pay, a share 0 to 1, becomes 1).
 function clamp(field) {
@@ -671,10 +693,11 @@ function describedBy(d) {
     }
     lawFilled = lawNow;
   }
+  stanceSum();
   $('arena').value = r.arena || 'flat';
   if (lastPose) drawArena(r.arena || 'flat', d.terrains, lastPose.offset);
   $('birth-seed').value = d.seed;
-  $('birth-layout').value = d.layout || 'joint';
+  $('birth-layout').value = d.layout || 'pair';
   $('birth-compass').checked = !!d.compass;
   $('birth-ground').checked = !!d.ground;
   $('birth-up').checked = !!d.up;
@@ -682,7 +705,8 @@ function describedBy(d) {
   const genes = { ...(d.genes || {}) };
   $('birth-hold').value = genes.hold == null ? '' : genes.hold;
   $('birth-entropy').value = genes.entropy == null ? FOUNDER_ENTROPY : genes.entropy;
-  for (const k of ['hold', 'entropy']) delete genes[k];   // maturity and the codes stay in the text: off the page
+  // hold=none (not the founder's 0.9) has no number for the field, so it stays in the text
+  for (const k of ['hold', 'entropy']) if (!(k === 'hold' && k in genes && genes.hold == null)) delete genes[k];   // maturity and the codes stay in the text: off the page
   $('birth-genes').value = geneWords(genes);
   const retunes = d.gene_changes ? d.gene_changes.length : 0;
   $('genesline').textContent = 'live brain: ' + (geneWords(d.genes) || 'founder genes') + ' · seed ' + d.seed
@@ -701,8 +725,8 @@ function describedBy(d) {
 }
 // high_water and old_ground stay law settings (the nursery's --high-water and --old-ground) but are
 // not on the page: unmeasured on this body and off; a life born with them still shows its mark.
-const FOUNDER_ENTROPY = 0.0;   // spider/brain.py's founder gene (tests/test_server.py holds them equal)
-const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry', 'idle_leg_pay', 'idle_moments', 'idle_height', 'low_pay', 'head_pay', 'touchdown_pay'];
+const FOUNDER_ENTROPY = 0.1;   // spider/brain.py's founder gene (tests/test_server.py holds them equal)
+const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry', 'carry_back', 'idle_leg_pay', 'idle_moments', 'idle_height', 'low_pay', 'rear_pay', 'head_pay', 'touchdown_pay'];
 // The nursery's words for a brain's gene overrides: {gamma: 0.99, arousal: {need: 0}} → "gamma=0.99 arousal.need=0".
 function geneWords(genes, prefix = '') {
   return Object.entries(genes || {}).map(([k, v]) =>
@@ -728,8 +752,9 @@ function law(m) {
   if (r.stance_pay) { const floor = r.stance_floor || 4;
     parts.push(`stance ${r.stance_pay}/foot under ${floor} foot${floor === 1 ? '' : 's'}${r.stance_upright === false ? ' (any foot)' : ''}`); }
   if (r.stand_pay) parts.push(`stand ${r.stand_pay}`);
-  if (r.carry) parts.push('carried');
+  if (r.carry) parts.push('carried' + (r.carry_back === false ? ', backward charged' : ''));
   if (r.low_pay) parts.push(`low ${r.low_pay}`);
+  if (r.rear_pay) parts.push(`rear ${r.rear_pay}`);
   if (r.head_pay) parts.push(`head ${r.head_pay}`);
   if (r.touchdown_pay) parts.push(`touchdown ${r.touchdown_pay}`);
   if (r.idle_leg_pay) parts.push(`idle leg ${r.idle_leg_pay}${r.idle_moments && r.idle_moments !== 20 ? ' after ' + r.idle_moments : ''}`);
@@ -834,7 +859,11 @@ function update(m) {
   $('reward').textContent = fmt(m.reward, 3) + (m.owed !== null && m.owed !== undefined ? ` (owed ${fmt(m.owed, 3)})` : '');
   lastState = m;
   $('law').textContent = law(m);
-  $('arousal').textContent = `${fmt(m.level, 2)} / ${fmt(m.want, 2)}`;
+  // a want of 1 is the whole of it: the recent reward is at or below nothing the brain could need,
+  // so the arousal law cannot calm whatever the need is set to (cadence arousal.py's want)
+  const wantFull = m.want !== null && m.want !== undefined && m.want >= 0.99;
+  $('arousal').textContent = `${fmt(m.level, 2)} / ${fmt(m.want, 2)}` + (wantFull ? ' · full' : '');
+  $('arousal').className = 'v' + (wantFull ? ' warn' : '');
   $('sweeps').textContent = `${m.sweeps} (${m.learning_sweeps} learning)`;
   $('ms').textContent = fmt(m.ms, 1);
   $('pace').textContent = (m.pace > 0 ? `${m.pace}/s` : 'max') + (m.rate > 0 ? ` · ${fmt(m.rate, 0)}/s made` : '');
@@ -846,15 +875,24 @@ function update(m) {
   $('stance').textContent = m.pose.planted.filter(Boolean).length + ' / ' + m.pose.planted.length;
   const paid = m.blocks.filter(b => b.reward_per_moment !== undefined && b.reward_per_moment !== null);
   const lastPaid = paid.length ? paid[paid.length - 1].reward_per_moment : null;
+  const meanPaid = paid.length ? paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length : null;
   $('reward-mean').textContent = paid.length
-    ? `${fmt(paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length, 3)} over ${paid.length * 100} · last ${fmt(lastPaid, 3)}`
-      + (lastPaid <= -0.499 ? ' · cap' : '')
+    ? `${fmt(meanPaid, 3)} over ${paid.length * 100} · last ${fmt(lastPaid, 3)}`
+      + (lastPaid <= -0.499 ? ' · cap' : meanPaid < 0 ? ' · below 0' : '')
     : '—';
-  $('reward-mean').className = 'v' + (paid.length && lastPaid <= -0.499 ? ' warn' : '');
+  $('reward-mean').className = 'v' + (paid.length && (lastPaid <= -0.499 || meanPaid < 0) ? ' warn' : '');
   const termed = m.blocks.filter(b => b.terms);
-  const TERM_NAMES = ['progress', 'stand', 'touchdown', 'idle', 'low', 'head', 'stance', 'yaw', 'upright', 'torque'];
+  const TERM_NAMES = ['progress', 'stand', 'touchdown', 'idle', 'low', 'rear', 'head', 'stance', 'yaw', 'upright', 'torque'];
   const termMean = k => termed.reduce((a, b) => a + (b.terms[k] || 0), 0) / termed.length;
   const shown = termed.length ? TERM_NAMES.filter(k => k === 'progress' || termed.some(b => b.terms[k])) : [];
+  // what the law gives against what it takes, before the cap: a charge larger than every gift
+  // leaves no act that pays, only acts that cost less
+  const given = termed.length ? TERM_NAMES.reduce((a, k) => a + Math.max(0, termMean(k)), 0) : 0;
+  const taken = termed.length ? TERM_NAMES.reduce((a, k) => a + Math.min(0, termMean(k)), 0) : 0;
+  $('reward-balance').textContent = termed.length
+    ? `given +${fmt(given, 3)} · taken ${fmt(taken, 3)}` + (given + taken < 0 ? ' · the charges outweigh every gift' : '')
+    : '—';
+  $('reward-balance').className = 'v' + (termed.length && given + taken < 0 ? ' warn' : '');
   $('reward-terms').textContent = termed.length
     ? shown.map(k => `${k} ${fmt(termMean(k), 3)}`).join(' · ') + ` (over ${termed.length * 100})`
       + (termed.some(b => b.touchdowns !== undefined) ? ` · ${termed.reduce((a, b) => a + (b.touchdowns || 0), 0)} touchdowns` : '')

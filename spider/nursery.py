@@ -28,7 +28,7 @@ from typing import Any
 from .brain import DEFAULT_LAYOUT, LAYOUTS
 from .brain import genes_from, parse_gene  # noqa: F401  (the server imports them from here too)
 from .life import (BACKWARD_PAY, BLOCK, COURSE, HIGH_WATER, OLD_GROUND, PROGRESS_PAY, PROGRESS_WINDOW, STANCE_PAY,
-                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, HEAD_PAY, TOUCHDOWN_PAY, ARENA,
+                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, CARRY_BACK, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, REAR_PAY, HEAD_PAY, TOUCHDOWN_PAY, ARENA,
                    STRICT, UPRIGHT, YAW_PAY, Life, checked_course)
 from .body import ARENAS
 from .model import LEGS, MODEL_DIGEST
@@ -60,6 +60,10 @@ def law_arguments(parser: argparse.ArgumentParser, default=lambda name, value: v
                              f"floor and at least the stance floor's feet planted (default {STAND_PAY}; 0 = off)")
     parser.add_argument("--carry", action=argparse.BooleanOptionalAction, default=default("CARRY", CARRY),
                         help="pay forward progress only while the belly is off the floor (default off)")
+    parser.add_argument("--carry-back", action=argparse.BooleanOptionalAction,
+                        default=default("CARRY_BACK", CARRY_BACK),
+                        help="under --carry, leave backward progress on the belly uncharged too (default on; "
+                             "--no-carry-back charges it, the law before)")
     parser.add_argument("--idle-leg-pay", type=float, default=float(default("IDLE_LEG_PAY", IDLE_LEG_PAY)),
                         help=f"shaping: reward taken per leg whose foot has been off the floor longer than the idle "
                              f"moments, while upright (default {IDLE_LEG_PAY}; 0 = off)")
@@ -72,6 +76,9 @@ def law_arguments(parser: argparse.ArgumentParser, default=lambda name, value: v
     parser.add_argument("--low-pay", type=float, default=float(default("LOW_PAY", LOW_PAY)),
                         help=f"shaping: reward taken by how far the torso sits below its ride height (0 standing, "
                              f"all of it lying on the belly; default {LOW_PAY}; 0 = off)")
+    parser.add_argument("--rear-pay", type=float, default=float(default("REAR_PAY", REAR_PAY)),
+                        help=f"shaping: reward taken by how far the abdomen sits below its ride height (0 carried, "
+                             f"all of it on the floor; default {REAR_PAY}; 0 = off)")
     parser.add_argument("--head-pay", type=float, default=float(default("HEAD_PAY", HEAD_PAY)),
                         help=f"shaping: reward taken each moment the head touches the floor "
                              f"(default {HEAD_PAY}; 0 = off)")
@@ -139,9 +146,9 @@ def life_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         old_ground=args.old_ground, pay_per_metre=args.pay_per_metre, backward_pay=args.backward_pay,
         course=args.course, strict=args.strict, layout=args.layout,
         upright_pay=args.upright_pay, stance_upright=args.stance_upright, torque_pay=args.torque_pay,
-        stance_floor=args.stance_floor, stand_pay=args.stand_pay, carry=args.carry,
+        stance_floor=args.stance_floor, stand_pay=args.stand_pay, carry=args.carry, carry_back=args.carry_back,
         idle_leg_pay=args.idle_leg_pay, idle_moments=args.idle_moments,
-        idle_height=args.idle_height, low_pay=args.low_pay,
+        idle_height=args.idle_height, low_pay=args.low_pay, rear_pay=args.rear_pay,
         head_pay=args.head_pay, touchdown_pay=args.touchdown_pay, arena=args.arena,
     )
 

@@ -5,7 +5,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from spider.body import ARENA_RADIUS, ARENAS, GRAIN_HEIGHT, GRAIN_STEP, ROCK_BIG_HEIGHT, ROCK_BIG_RADIUS, ROCK_CELL, ROCK_GIANT_CELL, ROCK_GIANT_HEIGHT, _relief, ROCK_CLEAR, ROCK_HEIGHT, ROCK_RADIUS, ROCK_STEP, _rock_shape, rock, STEEP_FACTOR, HIGH, LOW, MODEL_XML, SUBSTEPS, TERRAIN_HALF, TERRAIN_STEP, Spider, ground_height, model_xml, terrain_step
+from spider.body import ARENA_RADIUS, ARENAS, GRAIN_HEIGHT, GRAIN_STEP, ROCK_BIG_HEIGHT, ROCK_BIG_RADIUS, ROCK_CELL, ROCK_GIANT_CELL, ROCK_GIANT_HEIGHT, _relief, ROCK_CLEAR, ROCK_HEIGHT, ROCK_RADIUS, ROCK_STEP, _rock_hills, _rock_shape, rock, STEEP_FACTOR, HIGH, LOW, MODEL_XML, SUBSTEPS, TERRAIN_HALF, TERRAIN_STEP, Spider, ground_height, model_xml, terrain_step
 from spider.model import DT, HEIGHT, HIP_RATE, JOINTS, TIMESTEP
 
 HOLD = [1] * JOINTS
@@ -187,10 +187,8 @@ def test_the_flat_arena_is_the_plane_and_the_terrains_are_learning_spiders_waves
 def test_a_body_on_the_hills_stands_on_the_ground_under_it(arena):
     spider = settle(Spider(arena), 40)
     assert spider.arena == arena and spider.upright > 0.9
-    if arena == "hills":
-        assert spider.planted().sum() >= 4                     # its feet meet the field, not the plane
-    else:                                                      # the origin of the steep hills is a crest:
-        assert spider.belly_down() and spider.planted().sum() >= 2   # the newborn lies on it, feet down either side
+    assert spider.planted().sum() >= 4                         # its feet meet the field, not the plane (on the steep
+                                                               # crest, too: its feet no longer slide out from under it)
     feet = spider.data.geom_xpos[spider._feet]
     assert np.all(spider.foot_heights()[spider.planted()] < 0.01)
     assert spider.height == pytest.approx(spider.z - float(ground_height(arena, spider.x, spider.y)))
@@ -260,8 +258,8 @@ def test_the_rough_ground_moves_with_the_recentre():
     assert np.allclose(under, after, atol=1e-9)
 
 
-def test_the_rocks_lie_on_level_ground_each_inside_its_cell():
-    """Level ground but for angular rocks, blocks, spikes and boulders, each wholly inside its cell, none
+def test_the_rocks_lie_on_rolling_ground_each_inside_its_cell():
+    """The hills' ground but for angular rocks, blocks, spikes and boulders, each wholly inside its cell, none
     within ROCK_CLEAR of the origin, the same in every call; the field MuJoCo holds is those heights."""
     assert terrain_step("rocks") == ROCK_STEP
     i, j = np.meshgrid(np.arange(-20, 20), np.arange(-20, 20))
@@ -277,18 +275,21 @@ def test_the_rocks_lie_on_level_ground_each_inside_its_cell():
     assert np.all(np.hypot(cx, cy)[there] >= ROCK_CLEAR)
     k = int(np.flatnonzero((there & (np.hypot(cx, cy) < 2.5)).reshape(-1))[0])   # a rock inside the field, off the plateaus
     top = float(ground_height("rocks", cx.reshape(-1)[k], cy.reshape(-1)[k]))
-    assert 0 < top <= height.reshape(-1)[k]                                 # its centre stands on it, no higher than its height
-    assert float(ground_height("rocks", cx.reshape(-1)[k] + radius.reshape(-1)[k] + 1e-6, cy.reshape(-1)[k])) == 0.0
+    floor = float(_rock_hills(cx.reshape(-1)[k], cy.reshape(-1)[k]))
+    assert floor < top <= floor + height.reshape(-1)[k]                     # its centre stands on it, no higher than its height
+    x, y = cx.reshape(-1)[k] + radius.reshape(-1)[k] + 1e-6, cy.reshape(-1)[k]
+    assert float(ground_height("rocks", x, y)) == float(_rock_hills(x, y))   # beside it, the hills
     xs, ys = np.meshgrid(np.linspace(-ROCK_CLEAR / 1.5, ROCK_CLEAR / 1.5, 61), np.linspace(-ROCK_CLEAR / 1.5, ROCK_CLEAR / 1.5, 61))
-    assert not ground_height("rocks", xs, ys).any()                         # the birthplace is level
-    xs, ys = np.meshgrid(np.linspace(-2.5, 2.5, 151), np.linspace(-2.5, 2.5, 151))   # level ground between the plateaus
+    assert np.array_equal(ground_height("rocks", xs, ys), _rock_hills(xs, ys))   # the birthplace bears no rock
+    xs, ys = np.meshgrid(np.linspace(-2.5, 2.5, 151), np.linspace(-2.5, 2.5, 151))   # the hills between the plateaus
     h = ground_height("rocks", xs, ys)
-    assert np.array_equal(h, ground_height("rocks", xs, ys)) and h.min() == 0.0 and h.max() <= ROCK_GIANT_HEIGHT[1]
+    assert np.array_equal(h, ground_height("rocks", xs, ys)) and h.min() >= 0.0
+    assert np.all(h - _rock_hills(xs, ys) <= ROCK_GIANT_HEIGHT[1] + 1e-12)
     assert ground_height("rocks", 5 * xs, 5 * ys).max() <= _relief("rocks")
-    flank = np.hypot(*np.gradient(h, xs[0, 1] - xs[0, 0]))[h > 0.01]
+    flank = np.hypot(*np.gradient(h, xs[0, 1] - xs[0, 0]))[h - _rock_hills(xs, ys) > 0.01]
     assert np.percentile(flank, 90) > 1.0                                   # angular and steep, not a gentle mound
-    spider = settle(Spider("rocks"), 40)
-    assert spider.upright > 0.9 and spider.planted().all()
+    spider = settle(Spider("rocks"), 40)                       # on the hills' slope a foot may hang a few mm above
+    assert spider.upright > 0.9 and spider.planted().sum() >= 6 and spider.foot_heights().max() < 0.01
     field = spider.model.hfield_data.reshape(spider.model.hfield_nrow[0], spider.model.hfield_ncol[0])
     n = spider.model.hfield_nrow[0]
     assert n == round(2 * TERRAIN_HALF / ROCK_STEP) + 1
@@ -340,7 +341,18 @@ def test_plateaus_raise_level_ground_bare_or_of_rock_with_ramps_a_body_can_climb
         assert ground.min() == top                                          # its level top is the ground between rocks
         assert (ground.max() > top + 0.015) == rocky                         # rocks lie on a plateau of rock, none on a bare one
         assert ground.max() <= top + ROCK_BIG_HEIGHT[1] + 1e-12               # and never a giant
-    assert float(ground_height("rocks", 0.0, 0.0)) == 0.0
+    assert float(ground_height("rocks", 0.0, 0.0)) == float(_rock_hills(0.0, 0.0))
+
+
+def test_the_rocks_ground_rolls_in_hills_below_every_plateau_top():
+    from spider.body import ROCK_HILLS_HEIGHT, ROCK_PLATEAU_HEIGHT
+    xs, ys = np.meshgrid(np.linspace(-30, 30, 601), np.linspace(-30, 30, 601))
+    hills = _rock_hills(xs, ys)
+    assert hills.min() >= 0.0 and hills.max() <= 2 * ROCK_HILLS_HEIGHT < ROCK_PLATEAU_HEIGHT[0]
+    assert hills.max() - hills.min() > 0.08                                 # hills, not a grain
+    slope = np.hypot(*np.gradient(hills, xs[0, 1] - xs[0, 0]))
+    assert slope.max() < 0.12                                               # gentle: walked, not climbed
+    assert np.all(ground_height("rocks", xs, ys) >= hills)                   # nothing lies below them
 
 
 def test_a_body_laid_on_a_rock_is_raised_out_of_it():
@@ -377,6 +389,7 @@ def test_a_claw_is_part_of_its_foot(monkeypatch):
     import spider.model as model
     monkeypatch.setattr(model, "PAWL", False)                 # the rigid claw on the plain foot
     monkeypatch.setattr(model, "CLAW_LENGTH", 0.02)
+    monkeypatch.setattr(model, "ADHESION", 0.0)               # the claw alone: no sole pulls, the loads are the weight
     clawed = model.build()
     assert clawed.count("_claw") == 8 and clawed != MODEL_XML
     assert hashlib.sha256(clawed.encode()).hexdigest()[:16] != model.MODEL_DIGEST
@@ -411,3 +424,12 @@ def test_a_pawl_claw_folds_under_the_weight_and_is_part_of_its_foot(monkeypatch)
              for n in ("L1", "L2", "L3", "L4", "R1", "R2", "R3", "R4")]
     assert all(0.0 <= f <= model.PAWL_FOLD for f in folds) and max(folds) > 0.1
     assert spider.upright > 0.9 and spider.planted().all() and len(spider.joints.reshape(-1)) == JOINTS
+
+
+def test_a_body_restored_onto_a_ground_laid_since_its_save_stands_on_it():
+    spider = settle(Spider("rocks"), 20)
+    saved = spider.state_dict()
+    saved["state"] = list(np.asarray(saved["state"], dtype=float))
+    saved["state"][3] -= 0.1                                                # the ground rose 10 cm under the save
+    restored = Spider.restore(saved)
+    assert restored._sunk() <= 1e-4

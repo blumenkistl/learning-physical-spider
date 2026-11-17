@@ -12,7 +12,7 @@ from spider.senses import INPUTS, observe
 
 
 def test_compose_layout():
-    brain = compose(seed=1, backend="cpu")
+    brain = compose(seed=1, backend="cpu", layout="joint")
     assert len(brain.sensory_index) == INPUTS
     assert len(brain.motor_index) == ACTIONS
     assert list(brain.describe()["layout"]["slots"]) == SLOTS if "slots" in brain.describe()["layout"] else True
@@ -27,7 +27,7 @@ def test_genes_merge_arousal_by_key():
 
 
 def test_newborn_first_moments():
-    life = SpiderBrain.newborn(0, backend="cpu")
+    life = SpiderBrain.newborn(0, backend="cpu", layout="joint")
     spider = Spider()
     reward = None
     for _ in range(5):
@@ -187,12 +187,14 @@ def test_the_reward_learners_options_are_genes():
     import numpy as np
     from spider.brain import compose, genes_from_text
     founder = compose(0, None, inputs=20, backend="cpu")
-    same = compose(0, genes_from_text("hold=none entropy=0 maturity=false"), inputs=20, backend="cpu")
-    assert founder.basal_ganglia.config.hold is None and founder.basal_ganglia.config.entropy == 0.0
+    same = compose(0, genes_from_text("hold=0.9 entropy=0.1 maturity=false"), inputs=20, backend="cpu")
+    assert founder.basal_ganglia.config.hold == 0.9 and founder.basal_ganglia.config.entropy == 0.1
+    plain = compose(0, genes_from_text("hold=none"), inputs=20, backend="cpu")
+    assert plain.basal_ganglia.config.hold is None
     assert np.array_equal(np.asarray(founder.basal_ganglia.synapses), np.asarray(same.basal_ganglia.synapses))
-    tuned = compose(0, genes_from_text("hold=0.9 entropy=0.1 maturity=true maturity_scale=20"), inputs=20, backend="cpu")
+    tuned = compose(0, genes_from_text("hold=0.97 entropy=0.2 maturity=true maturity_scale=20"), inputs=20, backend="cpu")
     config = tuned.basal_ganglia.config
-    assert config.hold == 0.9 and config.entropy == 0.1
+    assert config.hold == 0.97 and config.entropy == 0.2
     assert tuned.basal_ganglia.maturity is not None and founder.basal_ganglia.maturity is None
     rng = np.random.default_rng(0)
     tuned.live([rng.random(20)])
@@ -249,7 +251,7 @@ def test_a_slot_per_leg_reads_the_same_twenty_four_commands(tmp_path):
     triples = {tuple(joint_commands([c] + [13] * 7, "leg")[:3]) for c in range(27)}
     assert triples == {(h, l, k) for h in range(3) for l in range(3) for k in range(3)}   # every triple a leg can take, once
     brain = compose(0, layout="leg", backend="cpu")
-    assert len(brain.motor_index) == 216 and layout_of(brain) == "leg" and layout_of(compose(0, backend="cpu")) == "joint"
+    assert len(brain.motor_index) == 216 and layout_of(brain) == "leg" and layout_of(compose(0, backend="cpu")) == "pair"
     life = SpiderBrain(brain)
     assert life.layout == "leg" and life.describe()["layout"] == "leg"
     spider = Spider()

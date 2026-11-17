@@ -76,3 +76,5 @@ button.on { background: #203a4a; border-color: var(--accent); }
 #init .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(90, 209, 255, 0.25); border-top-color: var(--accent); animation: init-spin 0.9s linear infinite; }
 @keyframes init-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { #init .spinner { animation: none; } }
+.settings .stance-box { display: flex; flex-direction: column; gap: 3px; margin: 1px 0; padding: 2px 0 3px 6px; border-left: 2px solid #4a6a9a; }
+.settings .stance-sum { margin: 0; font-size: 11px; color: var(--dim); white-space: normal; }

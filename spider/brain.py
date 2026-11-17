@@ -50,7 +50,8 @@ from .senses import INPUTS
 
 LAYOUTS = ("joint", "leg", "pair")   # how the motor cortex is read: a slot per joint (three answers), per leg
                                      # (twenty-seven) or per diagonal pair of legs (twenty-seven, both legs the same)
-DEFAULT_LAYOUT = "joint"        # the founder's layout; "leg" is measured in the README's "A slot per leg"
+DEFAULT_LAYOUT = "pair"         # the founder's layout, the owner's choice (2026-11-17; "joint" until then);
+                                # "leg" is measured in the README's "A slot per leg"
 PAIRS = ((0, 5), (1, 4), (2, 7), (3, 6))
 #                               # the pair layout's slots, legs numbered left front->back then right front->back:
 #                               # each left leg with the right leg one segment behind or ahead of it, so slots 0
@@ -152,10 +153,14 @@ FOUNDER: dict[str, Any] = {
                                     # would give it the moments before, a candidate gene for a gait
     # the reward learner's options (cadence docs/reward.md), each at the value that keeps the
     # composed actor to the bit; measured in the README's "The reward learner's options":
-    "hold": None,                   # the actor's eligibility decay apart from the critic's: None is
-                                    # gamma * lam (0.57 a moment), 0.9 a horizon of ten moments (a step),
+    "hold": 0.9,                    # the actor's eligibility decay apart from the critic's: 0.9 a horizon
+                                    # of ten moments (a step), the owner's choice (2026-11-17), unmeasured
+                                    # on this body (on learning-spider's below none, README there); None
+                                    # (hold=none) is gamma * lam (0.57 a moment), the founder's until then;
                                     # 1 holds every act until an episode ends, which never comes here
-    "entropy": 0.0,                 # the policy's entropy in the actor's step: off; 0.1 is the docs' dose
+    "entropy": 0.1,                 # the policy's entropy in the actor's step: 0.1, the docs' dose, the
+                                    # owner's choice (2026-11-17; 0 until then, 0.5 for part of that day),
+                                    # unmeasured on this body
                                     # (the founder's for part of 2026-11-15, unmeasured either way: above)
     "maturity": False,              # the slow use of plasticity that lowers the actor's step as it is spent
     "maturity_scale": 10.0,         # the use at which the step factor is 0.5 (with maturity only)
@@ -488,7 +493,7 @@ class SpiderBrain:
 
     def __init__(self, brain: Brain) -> None:
         self.brain = brain
-        self.layout = layout_of(brain) if hasattr(brain, "describe") else DEFAULT_LAYOUT   # a test's stub has no layout
+        self.layout = layout_of(brain) if hasattr(brain, "describe") else "joint"   # a test's stub answers per joint
         self.owed: float | None = None  # an outcome kept: after a refusal, or while another policy acted
         self.refusals = 0
         self.moments = 0

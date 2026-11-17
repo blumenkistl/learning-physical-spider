@@ -601,7 +601,7 @@ def test_a_slot_per_leg_is_a_birth_option_saved_with_the_life(tmp_path):
         assert len(out["commands"]) == JOINTS and all(c in (0, 1, 2) for c in out["commands"])
     life.save()
     assert json.loads(life.sidecar.read_text())["layout"] == "leg"
-    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")    # a slot per joint asked for
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", layout="joint")    # a slot per joint asked for
     assert again.load()["custody"] == "kept"
     assert again.layout == "leg" and again.policy.layout == "leg"
     assert any("a slot per leg" in note for note in again.notes)
@@ -635,7 +635,7 @@ def test_a_slot_per_pair_is_a_birth_option_saved_with_the_life(tmp_path):
         assert all(commands[3 * l:3 * l + 3] == commands[3 * r:3 * r + 3] for l, r in ((0, 5), (1, 4), (2, 7), (3, 6)))
     life.save()
     assert json.loads(life.sidecar.read_text())["layout"] == "pair"
-    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")    # a slot per joint asked for
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", layout="joint")    # a slot per joint asked for
     assert again.load()["custody"] == "kept"
     assert again.layout == "pair" and again.policy.layout == "pair"
     assert any("a slot per pair" in note for note in again.notes)
@@ -938,7 +938,10 @@ def test_standing_is_given_the_stand_pay_and_the_carry_law_pays_only_a_carried_b
     assert pay(0.01, belly=True) == pytest.approx(0.4)                           # off: the belly is paid as ever
     assert pay(0.01, belly=True, carry=True) == 0.0                              # carried law: dragged pays nothing
     assert pay(0.01, belly=False, carry=True) == pytest.approx(0.4)
-    assert pay(-0.01, belly=True, carry=True, backward_pay=1.0) == pytest.approx(-0.4)   # backward still charged
+    assert pay(-0.01, belly=True, carry=True, backward_pay=1.0) == 0.0          # carried backward free: nor charged
+    assert pay(-0.01, belly=True, carry=True, backward_pay=1.0, carry_back=False) == pytest.approx(-0.4)   # the law before
+    assert pay(-0.01, belly=False, carry=True, backward_pay=1.0) == pytest.approx(-0.4)   # carried backward: charged
+    assert pay(-0.01, belly=True, backward_pay=1.0) == pytest.approx(-0.4)      # nothing without carry
     for wrong in (-0.1, 0.6):
         with pytest.raises(ValueError):
             Life("random", seed=0, pace=0, runs="/nonexistent", stand_pay=wrong)
@@ -954,6 +957,22 @@ def test_standing_is_given_the_stand_pay_and_the_carry_law_pays_only_a_carried_b
     assert again.stand_pay == 0.03 and again.carry is True
     life.set_law({"stand_pay": 0.0, "carry": False})   # changed on the living brain, like every setting
     assert life.stand_pay == 0.0 and life.carry is False
+
+
+def test_a_life_saved_before_carry_back_keeps_the_backward_charge(tmp_path):
+    import json
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", carry=True, backward_pay=1.0)
+    assert life.law()["carry_back"] is True and "backward charged" not in law_text(life.law())
+    life.tick()
+    life.save()
+    sidecar = json.loads(life.sidecar.read_text())
+    del sidecar["law"]["carry_back"]
+    life.sidecar.write_text(json.dumps(sidecar))
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", carry=True, backward_pay=1.0)
+    assert again.load()["custody"] == "kept"
+    assert again.law()["carry_back"] is False and "carried, backward charged" in law_text(again.law())
+    again.set_law({"carry_back": True})              # the owner's to switch on, counted like every setting
+    assert again.carry_back is True and again.law_changes
 
 
 def test_a_leg_held_up_is_charged_by_name_and_counted(tmp_path):
@@ -1008,6 +1027,37 @@ def test_a_low_torso_is_charged_by_its_height_below_the_ride():
         Life("random", seed=0, pace=0, runs="/nonexistent", low_pay=-0.1)
 
 
+def test_an_abdomen_on_the_floor_is_charged_by_its_height_below_its_ride(tmp_path):
+    from spider.life import REAR_LIE, REAR_RIDE, rear_share, pay
+    assert rear_share(REAR_RIDE) == 0.0 and rear_share(0.2) == 0.0
+    assert rear_share(REAR_LIE) == 1.0 and rear_share(0.0) == 1.0
+    assert rear_share((REAR_RIDE + REAR_LIE) / 2) == pytest.approx(0.5)
+    assert pay(0.0, rear=1.0, rear_pay=0.1) == pytest.approx(-0.1)
+    assert pay(0.0, rear=1.0) == 0.0                                           # off by default
+    life = Life("random", seed=0, pace=0.0, runs=tmp_path, rear_pay=0.1)
+    assert life.law()["rear_pay"] == 0.1 and "rear 0.1" in law_text(life.law())
+    for _ in range(BLOCK):
+        life.tick()
+    share = rear_share(life.body.abdomen_height)
+    assert life.blocks[-1]["terms"]["rear"] <= 0.0
+    assert 0.0 <= share <= 1.0
+    with pytest.raises(ValueError):
+        Life("random", seed=0, pace=0, runs=tmp_path, rear_pay=-0.1)
+
+
+def test_a_law_saved_before_the_rear_hint_loads_with_it_off(tmp_path):
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu", low_pay=0.04)
+    life.tick()
+    life.save()
+    path = tmp_path / "spider.json"
+    state = json.loads(path.read_text())
+    del state["law"]["rear_pay"]
+    path.write_text(json.dumps(state))
+    again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu", rear_pay=0.1)
+    again.load()
+    assert again.law()["rear_pay"] == 0.0 and again.law()["low_pay"] == 0.04
+
+
 def test_a_head_on_the_floor_is_charged():
     from spider.life import pay
     assert pay(0.0, head=True, head_pay=0.04) == pytest.approx(-0.04)
@@ -1024,7 +1074,7 @@ def test_the_reward_is_its_terms_summed_and_capped():
     from spider.life import TERMS, capped, pay_terms
     kwargs = dict(stance=1, stance_pay=0.04, turn=0.3, yaw_pay=0.1, upright=0.2, upright_pay=0.05,
                   effort=0.5, torque_pay=0.02, belly=True, idle_legs=2.5, idle_leg_pay=0.04,
-                  low=0.7, low_pay=0.08, head=True, head_pay=0.04)
+                  low=0.7, low_pay=0.08, rear=0.5, rear_pay=0.06, head=True, head_pay=0.04)
     for progress in (0.004, -0.003, 0.0):
         terms = pay_terms(progress, **kwargs)
         assert set(terms) == set(TERMS)
@@ -1050,8 +1100,8 @@ def test_blocks_read_the_terms_and_the_capped_share(tmp_path):
 def test_the_worst_charge_is_named_and_a_law_that_reaches_the_cap_is_noted(tmp_path):
     from spider.life import worst_charge, checked_law
     assert worst_charge(checked_law()) == 0.0
-    law = checked_law(stance_pay=0.04, idle_leg_pay=0.04, low_pay=0.08, head_pay=0.04)
-    assert worst_charge(law) == pytest.approx(0.04 * 4 + 0.04 * LEGS + 0.08 + 0.04)
+    law = checked_law(stance_pay=0.04, idle_leg_pay=0.04, low_pay=0.08, rear_pay=0.06, head_pay=0.04)
+    assert worst_charge(law) == pytest.approx(0.04 * 4 + 0.04 * LEGS + 0.08 + 0.06 + 0.04)
     life = Life("random", seed=0, pace=0, runs=tmp_path, stance_pay=0.04)
     assert life.describe()["reward"]["worst_charge"] == pytest.approx(0.16)
     notes = len(life.notes)
