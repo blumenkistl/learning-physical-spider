@@ -1255,6 +1255,43 @@ def test_the_living_brains_need_is_retuned_noted_and_saved(tmp_path):
     assert again.gene_changes == [] and again.need() == pytest.approx(0.1)
 
 
+def test_the_living_brains_temperature_is_retuned_noted_and_saved(tmp_path):
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu", genes={"temperature": 0.3})
+    for _ in range(12):
+        life.tick()
+    assert life.brain.has_pending() and life.temperature() == pytest.approx(0.3)
+    out = life.control("temperature", 0.15)                # retuned with an act pending
+    assert out["changed"] and out["was"] == pytest.approx(0.3) and life.temperature() == pytest.approx(0.15)
+    assert life.brain.brain.learner.config.temperature == pytest.approx(0.15)
+    assert life.gene_changes == [{"moment": 12, "temperature": 0.15}]
+    assert "temperature changed at moment 12" in life.notes[-1] and "schedule of genes" in life.notes[-1]
+    assert life.control("temperature", 0.15)["changed"] is False and len(life.gene_changes) == 1
+    assert life.genes == {"temperature": 0.3}               # the birth stays the birth
+    for _ in range(6):
+        assert not life.tick()["refused"]
+    d = life.describe()
+    assert d["temperature"] == pytest.approx(0.15) and d["gene_changes"] == life.gene_changes
+    for bad in (0.0, -0.1, 2.5, float("nan"), "much"):
+        with pytest.raises(ValueError):
+            life.set_temperature(bad)
+    life.save()
+    again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.temperature() == pytest.approx(0.15) and again.gene_changes == life.gene_changes
+    for _ in range(6):
+        a, b = life.tick(), again.tick()
+        assert a["commands"] == b["commands"] and a["reward"] == b["reward"]
+    again.reset({"seed": 1})
+    assert again.gene_changes == [] and again.temperature() == pytest.approx(0.3)
+
+
+def test_a_life_without_a_brain_refuses_the_temperature(tmp_path):
+    life = Life("random", seed=0, pace=0, runs=tmp_path)
+    assert life.temperature() is None
+    with pytest.raises(ValueError):
+        life.set_temperature(0.15)
+
+
 def _block(moment, reward, policy="brain"):
     return {"moment": moment, "reward_per_moment": reward, "mean_stance": 1.0, "upright_share": 1.0, "policy": policy}
 

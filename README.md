@@ -907,6 +907,27 @@ Like the entropy it is a gene changed in the life, not the law and not a birth: 
 the same `gene_changes`, shown on the brain line and saved with the life; the brain's file carries
 the value, and a reset starts the newborn's genes again. Unmeasured on this body.
 
+## The temperature, live (`spider/life.py`, the page's "brain, live")
+
+The brain's base softmax `temperature` (founder 0.3) can be retuned on the living brain too (the
+control `temperature`, the page's "brain, live" field), through Cadence's
+`brain.retune(temperature=...)`: parameters, traces, memories and the pending act are kept, and the
+new temperature applies from the brain's next act on. While aroused, every motor slot samples its
+answer at this temperature and one uniformly chosen slot at `1 + heat * want` times it; in routine
+the brain answers greedily and the temperature does nothing. The control takes a number above 0, at
+most 2.
+
+It was added on the owner's choice after a live body (`leg`, flat, about 3.8 million moments)
+stood on four to five feet as its frozen copy (greedy: 0 % of moments on its belly, a mean stance of
+4.0, +0.06 a moment) but on 1.3 to 1.4 feet while living, at −0.10 to −0.13 a moment. With income
+below 0 and a need above it, the want is 1 and the brain is never calm, so every leg's answer was
+sampled at 0.3 each moment (readings, not a measurement of the control). A lower temperature samples
+nearer the brain's best answer.
+
+Like the entropy and the need it is a gene changed in the life: noted, counted in the same
+`gene_changes`, shown on the brain line and saved with the life; the brain's file carries the value,
+and a reset starts the newborn's genes again. Unmeasured on this body.
+
 ## Running
 
 ```bash

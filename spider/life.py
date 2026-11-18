@@ -512,7 +512,7 @@ class Life:
                                    head_pay=head_pay, touchdown_pay=touchdown_pay, arena=arena))
         self.mark = 0.0                         # the farthest paid distance reached: the high-water mark
         self.law_changes: list[dict[str, Any]] = []   # every live change of the law, moment and law (a schedule)
-        self.gene_changes: list[dict[str, Any]] = []  # every live retune of the brain's entropy or need, moment and value
+        self.gene_changes: list[dict[str, Any]] = []  # every live retune of the brain's entropy, need or temperature, moment and value
         self.seed = int(seed)
         self.genes = genes
         self.backend = backend
@@ -711,6 +711,40 @@ class Life:
                               f"(gene change {len(self.gene_changes)}: this brain is a schedule of genes, not one born so)")
             self.latest = self.snapshot(None)
         return {"need": need, "changed": True, "was": was}
+
+    # --- the brain's temperature, live ---------------------------------------------------------
+
+    def temperature(self) -> float | None:
+        """The living brain's base softmax temperature (Cadence's ``temperature``: every motor
+        slot samples at it while aroused, one slot at ``1 + heat * want`` times it), as it is now:
+        born with the gene ``temperature`` or retuned since; None without a brain."""
+        brain = self._live_brain()
+        return None if brain is None else float(brain.brain.learner.config.temperature)
+
+    def set_temperature(self, value: Any) -> dict[str, Any]:
+        """Retune the living brain's ``temperature`` from its next act on (Cadence's
+        ``brain.retune``: parameters, traces, memories and the pending act are kept). A gene changed
+        in its life, as the entropy is: noted, counted, shown and saved with the life, and the
+        brain's file carries the value itself."""
+        try:
+            temperature = float(value)
+        except (TypeError, ValueError):
+            raise ValueError("temperature is a number above 0, at most 2") from None
+        if not math.isfinite(temperature) or not 0.0 < temperature <= 2.0:
+            raise ValueError("temperature is a number above 0, at most 2")
+        with self.lock:
+            brain = self._live_brain()
+            if brain is None:
+                raise ValueError("no brain in this life to retune")
+            was = self.temperature()
+            if temperature == was:
+                return {"temperature": temperature, "changed": False}
+            brain.brain.retune(temperature=temperature)
+            self.gene_changes.append({"moment": self.moments, "temperature": temperature})
+            self.notes.append(f"temperature changed at moment {self.moments}: {was:g} to {temperature:g} "
+                              f"(gene change {len(self.gene_changes)}: this brain is a schedule of genes, not one born so)")
+            self.latest = self.snapshot(None)
+        return {"temperature": temperature, "changed": True, "was": was}
 
     # --- one moment -----------------------------------------------------------------------
 
@@ -982,6 +1016,8 @@ class Life:
                 return {"ok": True, **self.set_entropy(value)}
             elif op == "need":
                 return {"ok": True, **self.set_need(value)}
+            elif op == "temperature":
+                return {"ok": True, **self.set_temperature(value)}
             elif op == "policy":
                 return {"ok": True, **self.switch(str(value))}
             elif op == "pace":
@@ -1300,6 +1336,7 @@ class Life:
             "genes": dict(self.genes or {}),
             "entropy": self.entropy(),           # the living brain's entropy now: the gene, or its live retune
             "need": self.need(),                 # the living brain's arousal need now: the gene, or its live retune
+            "temperature": self.temperature(),   # the living brain's base temperature now: the gene, or its live retune
             "gene_changes": list(self.gene_changes),
             "brain": brain.describe() if brain is not None else None,
             "control": self.policy.describe() if self.policy is not brain else None,

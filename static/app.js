@@ -826,6 +826,7 @@ fetch('/api/describe').then(r => r.json()).then(d => {
 let lawFilled = null;                                  // the law the fields were last filled from
 let entropyFilled;                                      // the living brain's entropy the field was last filled from
 let needFilled;                                         // the living brain's arousal need the field was last filled from
+let temperatureFilled;                                  // the living brain's temperature the field was last filled from
 function describedBy(d) {
   described = d;
   if (lastState) $('law').textContent = law(lastState);
@@ -858,7 +859,7 @@ function describedBy(d) {
   $('birth-genes').value = geneWords(genes);
   const retunes = d.gene_changes ? d.gene_changes.length : 0;
   $('genesline').textContent = 'live brain: ' + (geneWords(d.genes) || 'founder genes') + ' · seed ' + d.seed
-    + (retunes ? ` · entropy now ${d.entropy}, need now ${d.need} (${retunes} live ${retunes === 1 ? 'change' : 'changes'}: a schedule of genes)` : '');
+    + (retunes ? ` · entropy now ${d.entropy}, need now ${d.need}, temperature now ${d.temperature} (${retunes} live ${retunes === 1 ? 'change' : 'changes'}: a schedule of genes)` : '');
   // the live entropy field is filled only when the brain's value is new to the page, as the law's
   if (d.entropy !== entropyFilled) {
     $('live-entropy').value = d.entropy === null || d.entropy === undefined ? '' : d.entropy;
@@ -869,6 +870,11 @@ function describedBy(d) {
     $('live-need').value = d.need === null || d.need === undefined ? '' : d.need;
     $('live-need').disabled = $('apply-need').disabled = d.need === null || d.need === undefined;
     needFilled = d.need;
+  }
+  if (d.temperature !== temperatureFilled) {
+    $('live-temperature').value = d.temperature === null || d.temperature === undefined ? '' : d.temperature;
+    $('live-temperature').disabled = $('apply-temperature').disabled = d.temperature === null || d.temperature === undefined;
+    temperatureFilled = d.temperature;
   }
 }
 // high_water and old_ground stay law settings (the nursery's --high-water and --old-ground) but are
@@ -1238,6 +1244,9 @@ $('apply-entropy').addEventListener('click', async () => {
 });
 $('apply-need').addEventListener('click', async () => {
   if (await control({ op: 'need', value: num($('live-need')) })) refreshDescription();
+});
+$('apply-temperature').addEventListener('click', async () => {
+  if (await control({ op: 'temperature', value: num($('live-temperature')) })) refreshDescription();
 });
 
 function connect() {
