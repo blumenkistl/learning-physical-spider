@@ -675,8 +675,9 @@ function steady(id, text, className) {
   el.textContent = text;
   if (className !== undefined) el.className = className;
 }
-// The long record's verdict in one line: the best window's reward and when it came, and how
-// long ago the last progress was; red once that is past the stall the server names.
+// The long record's verdict in one line: the best window's reward and when it came, how long ago
+// the last progress was, the last full window against what progress needs; red once that is past
+// the stall the server names.
 function showProgress(p, moments) {
   const el = $('progress');
   if (!p) { el.textContent = '—'; el.className = 'v'; return; }
@@ -685,8 +686,13 @@ function showProgress(p, moments) {
   if (p.best === null) {
     el.textContent = `first window at ${n(p.since + p.span)}` + (p.quiet > p.span ? ` · ${n(p.quiet)} moments` : '') + from;
   } else {
+    // the last full window counted under this law, and what the next must beat to be progress
+    const rows = (p.rows || []).filter(r => r.moment > p.since);
+    const last = rows.length ? rows[rows.length - 1] : null;
+    const next = last && last.moment !== p.best_at
+      ? ` · last window ${fmt(last.reward_per_moment, 3)}, needs over ${fmt(p.best + p.margin, 3)}` : '';
     el.textContent = (p.stalled ? '⚠ no progress for ' : 'last progress ') + `${n(p.quiet)} moments`
-      + ` · best ${fmt(p.best, 3)} at ${n(p.best_at)}` + from;
+      + ` · best ${fmt(p.best, 3)} at ${n(p.best_at)}` + next + from;
   }
   el.className = 'v' + (p.stalled ? ' warn' : '');
 }
@@ -938,6 +944,8 @@ function speedbar(m) {
   fill.style.width = Math.abs(share) + '%';
   $('speed-mean').style.left = (50 + Math.max(-1, Math.min(1, mean(m.blocks.slice(-1)) / SPEED_SCALE)) * 50) + '%';
   $('speed-label').textContent = fmt(mean(m.blocks.slice(-SPEED_BLOCKS))) + ' m/s';
+  // the speed row above: the last 100 moments' mean (the tick), not the moment's sample of the stride
+  steady('speed', m.blocks.length ? fmt(mean(m.blocks.slice(-1))) + ' m/s' : '—');
 }
 
 // --- the brain view: the whole connectome in three dimensions, on the right -----------------
@@ -1008,16 +1016,20 @@ function update(m) {
   mode.className = m.refused ? 'refused' : m.mode;
   $('forward').textContent = fmt(m.distance_forward) + ' m';
   $('net').textContent = fmt(m.displacement_m) + ' m' + (m.recentres ? ` · recentred ${m.recentres}×` : '');
-  $('speed').textContent = fmt(m.speed) + ' m/s';
   speedbar(m);
-  $('reward').textContent = fmt(m.reward, 3) + (m.owed !== null && m.owed !== undefined ? ` (owed ${fmt(m.owed, 3)})` : '');
+  // the moment's reward changes every moment: the row shows its mean over the last 1000 moments
+  // (the last ten blocks, as the speed bar), and is rewritten at most once a second
+  const rewardBlocks = (m.blocks || []).slice(-SPEED_BLOCKS);
+  const rewardMean = rewardBlocks.length ? rewardBlocks.reduce((a, b) => a + b.reward_per_moment, 0) / rewardBlocks.length : null;
+  steady('reward', (rewardMean === null ? '—' : fmt(rewardMean, 3))
+    + (m.owed !== null && m.owed !== undefined ? ` (owed ${fmt(m.owed, 3)})` : ''));
   lastState = m;
   $('law').textContent = law(m);
   // a want of 1 is the whole of it: the recent reward is at or below nothing the brain could need,
   // so the arousal law cannot calm whatever the need is set to (cadence arousal.py's want)
   const wantFull = m.want !== null && m.want !== undefined && m.want >= 0.99;
-  $('arousal').textContent = `${fmt(m.level, 2)} / ${fmt(m.want, 2)}` + (wantFull ? ' · full' : '');
-  $('arousal').className = 'v' + (wantFull ? ' warn' : '');
+  // a full want is shown in red, not in words: the row stays one line; rewritten at most once a second
+  steady('arousal', `${fmt(m.level, 2)} / ${fmt(m.want, 2)}`, 'v' + (wantFull ? ' warn' : ''));
   $('sweeps').textContent = `${m.sweeps} (${m.learning_sweeps} learning)`;
   $('ms').textContent = fmt(m.ms, 1);
   $('pace').textContent = (m.pace > 0 ? `${m.pace}/s` : 'max') + (m.rate > 0 ? ` · ${fmt(m.rate, 0)}/s made` : '');
