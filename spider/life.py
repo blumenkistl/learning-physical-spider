@@ -38,7 +38,7 @@ import mujoco
 
 from .body import ARENAS, TERRAINS, Spider
 from . import body as _body
-from .model import (ABDOMEN, ABDOMEN_POS, BODY, CLAW_RADIUS, DT, FOOT_RADIUS, HEAD_RADIUS, HEAD_X, HEIGHT, HIP_X, HIP_Y, JOINTS, LEG_RADIUS, LEGS, LEG_NAMES,
+from .model import (ABDOMEN, ABDOMEN_POS, BODY, CLAW_RADIUS, DT, FOOT_RADIUS, HEAD_RADIUS, HEAD_X, HEIGHT, HIP_X, HIP_Y, JOINTS, FEMUR_RADIUS, TIBIA_RADIUS, TARSUS_RADIUS, LEGS, LEG_NAMES,
                     MODEL_DIGEST, PER_SIDE, SIDE, WAIST, WAIST_RADIUS)
 from .brain import (DEFAULT_LAYOUT, LAYOUTS, FrozenPolicy, RandomPolicy, SpiderBrain, backend_of, fitted, gene_words,
                     genes_from_text, make_policy)
@@ -1322,7 +1322,7 @@ class Life:
             "shape": {"body": list(BODY), "head_x": HEAD_X, "head_radius": HEAD_RADIUS,
                       "abdomen": list(ABDOMEN), "abdomen_pos": list(ABDOMEN_POS),
                       "waist": [list(WAIST[0]), list(WAIST[1])], "waist_radius": WAIST_RADIUS,
-                      "leg_radius": LEG_RADIUS, "foot_radius": FOOT_RADIUS, "claw_radius": CLAW_RADIUS},
+                      "leg_radius": [FEMUR_RADIUS, TIBIA_RADIUS, TARSUS_RADIUS], "foot_radius": FOOT_RADIUS, "claw_radius": CLAW_RADIUS},
             "reward": {**self.law(), "cap": PROGRESS_CAP, "mark": round(self.mark, 4),
                        "worst_charge": round(worst_charge(self.law()), 4)},
             "upright": UPRIGHT,

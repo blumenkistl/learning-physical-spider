@@ -132,7 +132,7 @@ function makeGrid(hex) {                              // the lines follow the gr
   scene.add(grid);
 }
 // The rocks: spider/body.py's rocks, cell by cell, from the server's law (describe's rocks) and the
-// rough ground's hash, so the page draws the rocks the body meets: each rock the field MuJoCo holds,
+// fixed hash (body.py's _grain), so the page draws the rocks the body meets: each rock the field MuJoCo holds,
 // sampled on the same lattice (the law's step) and flat shaded, drawn around the pose's offset.
 const M64 = (1n << 64n) - 1n;
 function grain(i, j) {                                // body.py's _grain: the same 64-bit hash, in -1..1

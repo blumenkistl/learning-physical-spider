@@ -69,7 +69,11 @@ LIFT_RANGE = (0.0, 1.6)                 # chosen: the femur's rise 0.6..2.2 rad,
                                         # below 0 (-0.4 until b4d6dbf48b2bcb93) the legs pressed the body up
                                         # to three times its height and over onto its head
 KNEE_RANGE = (-0.5, 1.0)
-FOOT_RADIUS = 0.008
+FOOT_RADIUS = 0.016                     # chosen (the owner's choice, 2026-11-18): 0.008 until 6626e8e289933daf, when
+                                        # a foot on a height field's 1 cm cells met it in up to 15 contacts, some on
+                                        # the cells' walls, and was wedged (a knee at full torque could not lift it);
+                                        # at 0.016 a foot on rocks met it in about 2, none steeper than 60 degrees
+                                        # (probed, README). No grip of its own: MuJoCo's friction knows no area
 CLAW_LENGTH = 0.0                       # off: a claw behind each foot, from the foot's centre back and down to
 CLAW_RADIUS = 0.002                     # the sole's level, slanted to the body's rear; 0 builds none (the body is
                                         # then 2bd499aae3fd2b8b, unchanged). Probed at 12 to 30 mm (README): the
@@ -98,7 +102,16 @@ PAD_MU = 1.5                            # the pad's (the foot sphere's) under a 
 # so no muscle and no choice; its pull adds to the contact's normal force, and so to its grip, and
 # a foot is lifted by pulling it off. 0 builds none (the body is then the one without it).
 ADHESION = 0.03                         # N per foot: on, the owner's choice (2026-11-17) after the probe (README)
-LEG_RADIUS = 0.006
+# The legs' collision capsules, chosen (the owner's choice, 2026-11-18): as thick as the page draws
+# them (static/app.js FEMUR_R, TIBIA_R), so that legs the page shows apart are apart in the world and
+# legs it shows crossing touch; 0.006 throughout until body 1f1a83c1a66b9def, when the drawn legs crossed
+# while the capsules were 2 cm apart. The tarsus keeps 0.006, thinner than the foot sphere (0.008):
+# at the foot's own radius it met the floor with the foot every time (probed, 803 of 803 moments),
+# shared its load and took the floor's grip (0.8) for the foot's (1.5). Masses are set apart (below)
+# and do not change with it.
+FEMUR_RADIUS = 0.021
+TIBIA_RADIUS = 0.018
+TARSUS_RADIUS = 0.006
 
 # --- mass, chosen (not measured) ---------------------------------------------------------------
 TORSO_MASS = 0.022                      # kg; with the legs 0.03, the learning spider's MASS
@@ -165,15 +178,15 @@ def _leg(i: int) -> str:
                damping="{HIP_TORQUE / HIP_RATE:.6g}"/>
         <joint name="{name}_lift" type="hinge" axis="0 -1 0" range="{_f(*LIFT_RANGE)}"
                damping="{LIFT_TORQUE / LIFT_RATE:.6g}"/>
-        <geom name="{name}_femur" type="capsule" fromto="0 0 0 {_f(*knee)}" size="{LEG_RADIUS}"
+        <geom name="{name}_femur" type="capsule" fromto="0 0 0 {_f(*knee)}" size="{FEMUR_RADIUS}"
               mass="{FEMUR_MASS}" class="leg"/>
         <body name="{name}_tibia" pos="{_f(*knee)}">
           <joint name="{name}_knee" type="hinge" axis="0 -1 0" range="{_f(*KNEE_RANGE)}"
                  damping="{KNEE_TORQUE / KNEE_RATE:.6g}"/>
-          <geom name="{name}_tibia" type="capsule" fromto="0 0 0 {_f(*ankle)}" size="{LEG_RADIUS}"
+          <geom name="{name}_tibia" type="capsule" fromto="0 0 0 {_f(*ankle)}" size="{TIBIA_RADIUS}"
                 mass="{TIBIA_MASS}" class="leg"/>
           <site name="{name}_ankle" pos="{_f(*ankle)}"/>
-          <geom name="{name}_tarsus" type="capsule" fromto="{_f(*ankle, *foot)}" size="{LEG_RADIUS}"
+          <geom name="{name}_tarsus" type="capsule" fromto="{_f(*ankle, *foot)}" size="{TARSUS_RADIUS}"
                 mass="{TARSUS_MASS}" class="leg"/>
           {_sole(name, foot)}{_claw(name, yaw, foot)}{_pawl(name, yaw, foot)}
         </body>

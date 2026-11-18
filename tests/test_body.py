@@ -203,6 +203,9 @@ def test_a_save_on_the_hills_continues_bit_for_bit_across_a_recentre():
         a.step(c)
     a.data.qpos[0] = ARENA_RADIUS - 0.3                        # near the rim, so the continuation crosses it
     mujoco.mj_forward(a.model, a.data)
+    a._settle()                                                # the hand set it on other ground: out of it, as a life
+                                                               # never lies (body 6626e8e289933daf's tibia lay 19 mm
+                                                               # in, and a restore takes that for a ground changed)
     a.recentre()
     assert a.offset[0] == pytest.approx(round((ARENA_RADIUS - 0.3) / TERRAIN_STEP) * TERRAIN_STEP)
     saved = a.state_dict()
