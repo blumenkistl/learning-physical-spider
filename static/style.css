@@ -100,3 +100,4 @@ button.on { background: #203a4a; border-color: var(--accent); }
 #settings > summary { color: var(--ink); }
 .settings > .col:not(.birth) { padding: 6px 8px; border: 1px solid #262c38; border-radius: 8px; background: rgba(10, 13, 18, 0.55); }
 .settings > .col.birth { padding: 6px 8px; border: 1px solid #262c38; border-radius: 8px; background: rgba(10, 13, 18, 0.55); }
+#reward-mean { white-space: nowrap; }   /* one line: a wrap that comes and goes moves the rows below */

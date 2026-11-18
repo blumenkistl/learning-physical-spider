@@ -663,6 +663,18 @@ function showTilt(tilt) {
   const sign = v => { const r = Math.round(v); return (r > 0 ? '+' : '') + (r === 0 ? '0' : r); };
   $('tilt').textContent = `${sign(deg(tiltMean[0]))}° / ${sign(deg(tiltMean[1]))}°`;
 }
+// Rows read from the blocks change with every block, several times a second at a fast pace:
+// each is rewritten at most once a second, with the newest values then, so it can be read.
+const STEADY_EVERY_MS = 1000;
+const steadyAt = new Map();
+function steady(id, text, className) {
+  const now = performance.now();
+  if (now - (steadyAt.get(id) || -Infinity) < STEADY_EVERY_MS) return;
+  steadyAt.set(id, now);
+  const el = $(id);
+  el.textContent = text;
+  if (className !== undefined) el.className = className;
+}
 // The long record's verdict in one line: the best window's reward and when it came, and how
 // long ago the last progress was; red once that is past the stall the server names.
 function showProgress(p, moments) {
@@ -736,11 +748,10 @@ function drawPay(blocks, terms, cap, cappedShare) {
   tick.style.display = paid === null ? 'none' : 'block';
   if (paid !== null) tick.style.left = (50 + 50 * Math.max(-1, Math.min(1, paid / scale))) + '%';
   const over = Math.abs(sum) > cap;
-  $('pay-sum').textContent = (sum > 0 ? '+' : '') + fmt(sum, 3);
-  $('pay-sum').className = 'v ' + (over ? 'warn' : sum > 0 ? 'give' : sum < 0 ? 'take' : '');
-  $('pay-summary').textContent = `paid ${paid === null ? '—' : fmt(paid, 3)} · scale ±${scale}`
+  steady('pay-sum', (sum > 0 ? '+' : '') + fmt(sum, 3), 'v ' + (over ? 'warn' : sum > 0 ? 'give' : sum < 0 ? 'take' : ''));
+  steady('pay-summary', `paid ${paid === null ? '—' : fmt(paid, 3)} · scale ±${scale}`
     + (cappedShare === null || cappedShare === undefined ? '' : ` · capped ${Math.round(100 * cappedShare)}%`)
-    + (over ? ' · beyond the cap' : '');
+    + (over ? ' · beyond the cap' : ''));
   drawPayHistory(cap);
 }
 
@@ -760,8 +771,8 @@ function drawPayHistory(cap) {
   for (const c of [cap, -cap]) { g.beginPath(); g.moveTo(0, y(c)); g.lineTo(w, y(c)); g.stroke(); }
   g.setLineDash([]);
   const last = values.length ? values[values.length - 1] : null;
-  $('pay-last').textContent = last === null ? '—' : (last > 0 ? '+' : '') + fmt(last, 3);
-  $('pay-last').className = 'v ' + (last === null ? '' : last <= -cap + 0.001 ? 'warn' : last > 0 ? 'give' : 'take');
+  steady('pay-last', last === null ? '—' : (last > 0 ? '+' : '') + fmt(last, 3),
+    'v ' + (last === null ? '' : last <= -cap + 0.001 ? 'warn' : last > 0 ? 'give' : 'take'));
   if (values.length < 2) return;
   const step = w / (PAY_HISTORY - 1), x0 = w - (values.length - 1) * step;
   g.lineWidth = 1.5;
@@ -1014,11 +1025,12 @@ function update(m) {
   const paid = m.blocks.filter(b => b.reward_per_moment !== undefined && b.reward_per_moment !== null);
   const lastPaid = paid.length ? paid[paid.length - 1].reward_per_moment : null;
   const meanPaid = paid.length ? paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length : null;
-  $('reward-mean').textContent = paid.length
-    ? `${fmt(meanPaid, 3)} over ${paid.length * 100} · last ${fmt(lastPaid, 3)}`
-      + (lastPaid <= -0.499 ? ' · cap' : meanPaid < 0 ? ' · below 0' : '')
-    : '—';
-  $('reward-mean').className = 'v' + (paid.length && (lastPaid <= -0.499 || meanPaid < 0) ? ' warn' : '');
+  // one line of fixed width: both numbers signed, below 0 said by the red alone (a suffix
+  // that came and went wrapped the row and moved everything under it)
+  const signed = v => (v > 0 ? '+' : v < 0 ? '' : ' ') + fmt(v, 3);
+  steady('reward-mean', paid.length
+    ? `${signed(meanPaid)} over ${paid.length * 100} · last ${signed(lastPaid)}` + (lastPaid <= -0.499 ? ' · cap' : '')
+    : '—', 'v' + (paid.length && (lastPaid <= -0.499 || meanPaid < 0) ? ' warn' : ''));
   const termed = m.blocks.filter(b => b.terms);
   const TERM_NAMES = ['progress', 'stand', 'touchdown', 'idle', 'low', 'rear', 'head', 'stance', 'yaw', 'upright', 'torque'];
   const termMean = k => termed.reduce((a, b) => a + (b.terms[k] || 0), 0) / termed.length;
@@ -1029,10 +1041,9 @@ function update(m) {
   // leaves no act that pays, only acts that cost less
   const given = termed.length ? TERM_NAMES.reduce((a, k) => a + Math.max(0, termMean(k)), 0) : 0;
   const taken = termed.length ? TERM_NAMES.reduce((a, k) => a + Math.min(0, termMean(k)), 0) : 0;
-  $('reward-balance').textContent = termed.length
+  steady('reward-balance', termed.length
     ? `given +${fmt(given, 3)} · taken ${fmt(taken, 3)}` + (given + taken < 0 ? ' · the charges outweigh every gift' : '')
-    : '—';
-  $('reward-balance').className = 'v' + (termed.length && given + taken < 0 ? ' warn' : '');
+    : '—', 'v' + (termed.length && given + taken < 0 ? ' warn' : ''));
   const r = described && described.reward;
   const worst = r && r.worst_charge !== undefined ? r.worst_charge : null;
   const cap = (r && r.cap) || 0.5;
@@ -1043,9 +1054,9 @@ function update(m) {
   $('worst-charge').className = 'v' + ((worst !== null && worst >= cap) || cappedShare > 0.05 ? ' warn' : '');
   drawPay(m.blocks, termed.length ? shown.map(k => [k, termMean(k)]) : [], cap, cappedShare);
   const stanced = m.blocks.filter(b => b.mean_stance !== undefined && b.mean_stance !== null);
-  $('mean-stance').textContent = stanced.length
+  steady('mean-stance', stanced.length
     ? `${fmt(stanced.reduce((a, b) => a + b.mean_stance, 0) / stanced.length, 2)} over ${stanced.length * 100} · last 100: ${fmt(stanced[stanced.length - 1].mean_stance, 2)}`
-    : '—';
+    : '—');
   $('turned').textContent = `${fmt(m.turned, 1)} rad (${fmt(m.omega, 2)} rad/s)`;
   $('refusals').textContent = m.refusals;
   $('pause').textContent = m.paused ? 'Resume' : 'Pause';
