@@ -701,13 +701,16 @@ function payBar(bar, v, scale) {
   fill.className = 'fill ' + (v >= 0 ? 'give' : 'take');
 }
 
+// a term's name on the page where the reward's own key says less: "idle" is charged per foot held up
+const TERM_LABELS = { idle: 'idle feet' };
+
 function payRow(name) {
   let row = payRows.get(name);
   if (!row) {
     row = document.createElement('div');
     row.className = 'pay-row';
     row.innerHTML = `<span class="k"></span><div class="pay-bar"><div class="zero"></div><div class="cap lo"></div><div class="cap hi"></div><div class="fill"></div></div><span class="v"></span>`;
-    row.querySelector('.k').textContent = name;
+    row.querySelector('.k').textContent = TERM_LABELS[name] || name;
     payRows.set(name, row);
   }
   return row;
