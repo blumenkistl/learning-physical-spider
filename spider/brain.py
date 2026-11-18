@@ -13,7 +13,7 @@ with right 3, the pairs a spider's alternating tetrapod gait swings together), b
 pair taking the same twenty-seven-way answer. The same twenty-four commands reach the body in every
 layout; what differs is what the brain chooses and is credited for: a joint, a leg, or a
 pair. ``pair`` couples legs the body does not couple, so it is a different model, not a
-reading of the founder's (README, "A slot per leg", "A slot per pair").
+reading of the founder's (README, "A slot per leg against a slot per pair").
 
 The founder genes are the Spider Arena nursery's operating point (cadence-demos,
 ``robot-arena/arena/brain.py``) translated to cadence-net 0.97.1 names, with two choices made
@@ -51,7 +51,8 @@ from .senses import INPUTS
 LAYOUTS = ("joint", "leg", "pair")   # how the motor cortex is read: a slot per joint (three answers), per leg
                                      # (twenty-seven) or per diagonal pair of legs (twenty-seven, both legs the same)
 DEFAULT_LAYOUT = "pair"         # the founder's layout, the owner's choice (2026-11-17; "joint" until then);
-                                # "leg" is measured in the README's "A slot per leg"
+                                # "leg" against "pair" is measured in the README's "A slot per leg against a
+                                # slot per pair" (stage 1, four newborns each)
 PAIRS = ((0, 5), (1, 4), (2, 7), (3, 6))
 #                               # the pair layout's slots, legs numbered left front->back then right front->back:
 #                               # each left leg with the right leg one segment behind or ahead of it, so slots 0
@@ -67,7 +68,7 @@ def slots_of(layout: str) -> list[int]:
     joint's decrease / hold / increase each; ``leg`` reads eight slots of twenty-seven, one leg's
     triple of hip swing, hip lift and knee commands, every triple of the same three a joint has.
     Both reach the same twenty-four commands; under ``leg`` a leg is one choice, not two, so a lift with a
-    swing, or a stroke, is one answer to credit (README, "A slot per leg")."""
+    swing, or a stroke, is one answer to credit (README, "A slot per leg against a slot per pair")."""
     if layout == "joint":
         return [3] * JOINTS
     if layout == "leg":

@@ -61,6 +61,11 @@ the last 30,000 moments, as the mean of each group's four lives:
 | 0.08 (seeds 20 to 23) | 3 of 4 (15 %, 20 %, 32 %; seed 23 68 %) | 34 % | 1.86 | 50 % | 0 to 2 |
 | 0.02 (seeds 24 to 27) | 0 of 4 | 76 % | 0.83 | 10 % | 5 to 15 |
 
+Run again on 2026-11-18 with another script ("A slot per leg against a slot per pair" below), the
+same law and seeds 20 to 23 under `pair` gave 2 of 4 off the belly, not 3. Feet planted (1.88)
+and belly down (47 %) were close, but the lives differed seed by seed: seed 23, for example, was
+68 % belly down here and 21 % there.
+
 The earlier start law had no `rear_pay`, `stance_pay` 0.02 and `low_pay` 0.04. Under it none of
 eight newborns (seeds 10 to 17, 150,000 moments each) came below 60 % belly down.
 
@@ -88,6 +93,45 @@ went from 1.0 to 1.6 to 1.9 feet planted, and its belly-down samples fell from 6
 - The front legs (leg 1) lay on femur and tibia, propping the front.
 - The head touched in 13 to 21 % of the moments, and the abdomen in 26 %.
 - The torso was near level, pitch ±0.04 rad.
+
+### A slot per leg against a slot per pair
+
+Under `pair` both legs of a diagonal pair take the same answer. That is fine for standing, but a
+body steers by giving one side a shorter stroke than the other, which `pair` can do only between
+pairs, never within one. `leg` gives every leg its own answer (eight slots of twenty-seven), so it
+is the candidate for walking straight. The question is what it costs in getting up.
+
+Both layouts were run under the stage-1 law above, four newborns each (seeds 20 to 23), 300,000
+moments each, on body `1f1a83c1a66b9def`, flat (2026-11-18). The readings are over the last 30,000
+moments. All of them came from one script, so they are not the table above, which an earlier
+script counted. "Feet planted" is the count of feet on the floor at a moment's end, and
+"abdomen carried" means the abdomen centre is above 0.125 m.
+
+| Layout | Seed | Belly down | Feet planted | Abdomen carried | Falls (in the last 30,000) |
+| --- | --- | --- | --- | --- | --- |
+| `pair` | 20 | 67 % | 1.76 | 15 % | 4 (0) |
+| `pair` | 21 | 27 % | 1.79 | 53 % | 2 (0) |
+| `pair` | 22 | 71 % | 1.65 | 13 % | 1 (0) |
+| `pair` | 23 | 21 % | 2.30 | 62 % | 0 (0) |
+| `leg` | 20 | 90 % | 0.42 | 3 % | 85 (7) |
+| `leg` | 21 | 72 % | 1.13 | 9 % | 12 (0) |
+| `leg` | 22 | 85 % | 0.61 | 4 % | 32 (2) |
+| `leg` | 23 | 68 % | 1.00 | 14 % | 3 (1) |
+
+- Under `pair`, 2 of 4 got off the belly (below 50 %), with 1.65 to 2.30 feet planted. The
+  table above, from the earlier script, counts 3 of 4 for the same law and seeds. Its feet
+  planted (1.86) and belly down (34 %) are close to these means (1.88 and 47 %), but they come
+  from another count. Both are kept.
+- Under `leg`, none got off the belly, with 0.4 to 1.1 feet planted and far more falls.
+- `leg` still learned, only more slowly than under `pair`. Feet planted rose over the 300,000
+  moments in three of its four lives (seed 21: 0.48 at 10,000 to 1.13; seed 23: 0.42 to 1.00).
+  Seed 20 barely moved (0.36 to 0.42). One moment
+  of `leg` also costs more.
+- Whether `leg` catches up later is not measured. A live life under `leg`, on the same law with
+  `backward_pay` 0 from moment 251,666 and `stand_pay` 0.1 from 375,818, first stood clear of the
+  floor at about moment 387,000.
+
+`pair` remains the founder's layout (`DEFAULT_LAYOUT`).
 
 ### Stage 2: walk (one life's path, open)
 
