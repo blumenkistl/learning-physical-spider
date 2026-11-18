@@ -78,3 +78,25 @@ button.on { background: #203a4a; border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { #init .spinner { animation: none; } }
 .settings .stance-box { display: flex; flex-direction: column; gap: 3px; margin: 1px 0; padding: 2px 0 3px 6px; border-left: 2px solid #4a6a9a; }
 .settings .stance-sum { margin: 0; font-size: 11px; color: var(--dim); white-space: normal; }
+/* reward & pay: one bar per term on a shared scale, the sum against the cap, and the history */
+#pay { margin: 8px 0; padding: 8px 10px; border: 1px solid #262c38; border-radius: 8px; background: rgba(10, 13, 18, 0.55); --give: #7ee787; --take: #ff6b6b; }
+#pay .pay-head { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+#pay .pay-head .v { text-transform: none; letter-spacing: 0; color: var(--dim); }
+#pay .pay-row { display: grid; grid-template-columns: 70px minmax(0, 1fr) 58px; align-items: center; gap: 8px; font-size: 12px; margin: 2px 0; }
+#pay .pay-row .v { text-align: right; }
+#pay .pay-sum { margin-top: 5px; padding-top: 5px; border-top: 1px solid #262c38; }
+#pay .pay-bar { position: relative; height: 9px; border: 1px solid #2d3647; border-radius: 3px; background: #1b2230; overflow: hidden; }
+#pay .pay-bar .zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #4a556b; }
+#pay .pay-bar .cap { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #8b94a7; display: none; }
+#pay .pay-bar .fill { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; transition: left 0.2s, width 0.2s; }
+#pay .pay-bar .fill.give { background: var(--give); } #pay .pay-bar .fill.take { background: var(--take); }
+#pay .pay-bar .tick { position: absolute; top: -1px; bottom: -1px; width: 2px; margin-left: -1px; left: 50%; background: var(--ink); display: none; }
+#pay .v.give { color: var(--give); } #pay .v.take { color: var(--take); } #pay .v.warn { color: var(--take); font-weight: 600; }
+#pay-history { display: block; width: 100%; height: 44px; background: #0a0d12; border-radius: 4px; }
+.settings-desc { margin: 6px 0 0; padding-top: 6px; border-top: 1px solid #2d3647; font-size: 12px; }
+#history { margin-top: 6px; } #history summary { cursor: pointer; font-size: 12px; } #history #notes { max-height: 12em; }
+#learning { margin-bottom: 4px; }
+.grid.box { margin: 8px 0; padding: 8px 10px; border: 1px solid #262c38; border-radius: 8px; background: rgba(10, 13, 18, 0.55); }
+#settings > summary { color: var(--ink); }
+.settings > .col:not(.birth) { padding: 6px 8px; border: 1px solid #262c38; border-radius: 8px; background: rgba(10, 13, 18, 0.55); }
+.settings > .col.birth { padding: 6px 8px; border: 1px solid #262c38; border-radius: 8px; background: rgba(10, 13, 18, 0.55); }

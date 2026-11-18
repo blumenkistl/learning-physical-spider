@@ -156,6 +156,10 @@ ARENA = "flat"          # the ground: flat (the founder, MuJoCo's plane z = 0), 
                         # (README, "The hills"). Unmeasured on this body
 BLOCK = 100             # moments per statistics block
 BLOCKS_KEPT = 60
+PROGRESS_SPAN = 10_000  # moments a row of the long record averages (a reading, never paid)
+PROGRESS_KEPT = 300     # rows of the long record kept and saved: 3 million moments
+PROGRESS_MARGIN = 0.01  # reward per moment a window must beat the best before it by, to count as progress
+PROGRESS_STALL = 100_000  # moments without progress after which the page says so
 FORMAT = "learning-physical-spider/1"
 UPRIGHT = 0.5           # a torso whose up axis is above this along the world's counts as upright (a reading, and under stance_upright the gate for the feet)
 HIPS = [[round(HIP_X[i % PER_SIDE], 5), round(SIDE[i] * HIP_Y[i % PER_SIDE], 5), 0.0] for i in range(LEGS)]
@@ -395,6 +399,68 @@ def law_text(law: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
+class Progress:
+    """The long record of a life, a reading: the mean reward per moment, feet planted and upright
+    share over each window of ``PROGRESS_SPAN`` moments the brain commanded, and when a window last
+    beat the best before it by ``PROGRESS_MARGIN``. A change of the law pays another way, so the
+    best starts again from it; moments under the random or frozen policy are not the brain's and
+    are left out. It reads the blocks and decides nothing."""
+
+    def __init__(self, since: int = 0) -> None:
+        self.rows: deque[dict[str, Any]] = deque(maxlen=PROGRESS_KEPT)
+        self._open: list[dict[str, Any]] = []
+        self._start: int | None = None
+        self.best: float | None = None
+        self.best_at = int(since)              # the moment of the last progress, or of what restarted the count
+        self.since = int(since)                # the law change (or birth, or load) the best is counted from
+
+    def add(self, block: dict[str, Any], moments_before: int) -> None:
+        if block.get("policy") != "brain":
+            return
+        if self._start is None:
+            self._start = moments_before
+        self._open.append(block)
+        if block["moment"] - self._start < PROGRESS_SPAN:
+            return
+        rows, self._open, self._start = self._open, [], None
+        row = {"moment": int(rows[-1]["moment"]),
+               "reward_per_moment": round(sum(b["reward_per_moment"] for b in rows) / len(rows), 4),
+               "mean_stance": round(sum(b["mean_stance"] for b in rows) / len(rows), 3),
+               "upright_share": round(sum(b["upright_share"] for b in rows) / len(rows), 3)}
+        self.rows.append(row)
+        if self.best is None or row["reward_per_moment"] > self.best + PROGRESS_MARGIN:
+            self.best = row["reward_per_moment"]
+            self.best_at = row["moment"]
+
+    def restart(self, moment: int) -> None:
+        """The law changed (or the count starts at a load): the best is counted again from here."""
+        self._open, self._start = [], None
+        self.best, self.best_at, self.since = None, int(moment), int(moment)
+
+    def reading(self, moments: int) -> dict[str, Any]:
+        quiet = int(moments) - self.best_at
+        return {"best": self.best, "best_at": self.best_at, "since": self.since, "quiet": quiet,
+                "stalled": quiet >= PROGRESS_STALL, "span": PROGRESS_SPAN, "stall": PROGRESS_STALL,
+                "margin": PROGRESS_MARGIN, "rows": list(self.rows)[-30:]}
+
+    def state_dict(self) -> dict[str, Any]:
+        return {"rows": list(self.rows), "open": list(self._open), "start": self._start,
+                "best": self.best, "best_at": self.best_at, "since": self.since}
+
+    @classmethod
+    def from_state(cls, state: dict[str, Any] | None, moments: int) -> "Progress":
+        """A saved record continues as it was; a life saved before the record counts from its load."""
+        progress = cls(since=moments)
+        if state:
+            progress.rows = deque(state["rows"], maxlen=PROGRESS_KEPT)
+            progress._open = list(state["open"])
+            progress._start = state["start"]
+            progress.best = state["best"]
+            progress.best_at = int(state["best_at"])
+            progress.since = int(state["since"])
+        return progress
+
+
 class Life:
     """The world, the policy and the loop. ``policy`` is ``brain``, ``random`` or ``frozen``."""
 
@@ -478,6 +544,7 @@ class Life:
         self.switches = 0
         self.blocks: deque[dict[str, Any]] = deque(maxlen=BLOCKS_KEPT)
         self._block: list[dict[str, Any]] = []
+        self.progress = Progress()
         self.lock = threading.RLock()
         self.paused = False
         self.running = False
@@ -567,6 +634,7 @@ class Life:
                 self.mark = 0.0 if law["course"] is not None else self.distance_forward
             self._take_law(law)
             self.law_changes.append({"moment": self.moments, "law": law})
+            self.progress.restart(self.moments)
             self.notes.append(f"law changed at moment {self.moments}: {law_text(law)} (change {len(self.law_changes)}: this life is a schedule)")
             worst = worst_charge(law)
             if worst >= PROGRESS_CAP:
@@ -808,6 +876,7 @@ class Life:
             "displacement_m": round(self.displacement_m(), 4),      # from the birth point, at the block's end
             "policy": rows[-1]["policy"],
         })
+        self.progress.add(self.blocks[-1], self.moments - n)
 
     def snapshot(self, reading: dict[str, Any] | None) -> dict[str, Any]:
         reading = reading or {}
@@ -847,6 +916,7 @@ class Life:
             "pace": self.pace,
             "rate": round(self.rate, 1),
             "blocks": list(self.blocks)[-12:],
+            "progress": self.progress.reading(self.moments),
             "last_save_at": self.last_save_at,
             "notes": self.notes[-5:],
         }
@@ -1019,6 +1089,7 @@ class Life:
                 "nose_window": list(self._nose),
                 "aloft": list(self.aloft),
                 "blocks": list(self.blocks),
+                "progress": self.progress.state_dict(),
                 "saved_at": time.time(),
             }
             _replace(self.sidecar, lambda p: p.write_text(json.dumps(state)))
@@ -1093,6 +1164,7 @@ class Life:
                 self._progress = deque([float(v) for v in state["progress_window"]][-self.window:], maxlen=self.window)
                 self._nose = deque([float(v) for v in state["nose_window"]][-self.window:], maxlen=self.window)
                 self.blocks = deque(state["blocks"], maxlen=BLOCKS_KEPT)
+                self.progress = Progress.from_state(state.get("progress"), self.moments)   # saved before it: from the load
                 self.aloft = [int(n) for n in state.get("aloft", [0] * LEGS)]   # saved before the count: from zero
                 if state.get("cadence") != CADENCE_VERSION:
                     self.notes.append(f"saved with cadence {state.get('cadence')}, running {CADENCE_VERSION}")
@@ -1166,6 +1238,7 @@ class Life:
             self.switches = 0
             self.blocks.clear()
             self._block = []
+            self.progress = Progress()
             self._progress.clear()
             self._nose.clear()
             self.law_changes = []

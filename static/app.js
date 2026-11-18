@@ -637,6 +637,140 @@ resize();
 // --- HUD -----------------------------------------------------------------------------------
 const $ = id => document.getElementById(id);
 const fmt = (v, d = 3) => (v === null || v === undefined) ? '—' : Number(v).toFixed(d);
+
+// The reward & pay panel: one bar per term of the law on one scale (given green, taken red), the
+// terms' sum before the cap against the cap and what was paid after it, and the mean reward of
+// every block since the page opened. Readings of the blocks the server sends; it computes no reward.
+const PAY_SCALES = [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25];
+const payHistory = new Map();                // block moment -> its mean reward a moment
+const PAY_HISTORY = 300;
+// Roll and pitch as read by eye: each angle's mean over about the last second (as a unit vector,
+// so a body on its back at ±180° does not average to 0), the text set at most twice a second.
+const TILT_SECONDS = 1.0, TILT_EVERY_MS = 500;
+let tiltMean = null, tiltAt = 0, tiltShownAt = 0;
+function showTilt(tilt) {
+  if (!tilt) { tiltMean = null; $('tilt').textContent = '—'; return; }
+  const now = performance.now();
+  const a = tiltMean ? 1 - Math.exp(-(now - tiltAt) / 1000 / TILT_SECONDS) : 1;
+  tiltMean = tilt.slice(0, 2).map((t, i) => {
+    const [c, s] = tiltMean ? tiltMean[i] : [Math.cos(t), Math.sin(t)];
+    return [c + a * (Math.cos(t) - c), s + a * (Math.sin(t) - s)];
+  });
+  tiltAt = now;
+  if (now - tiltShownAt < TILT_EVERY_MS) return;
+  tiltShownAt = now;
+  const deg = ([c, s]) => Math.atan2(s, c) * 180 / Math.PI;
+  const sign = v => { const r = Math.round(v); return (r > 0 ? '+' : '') + (r === 0 ? '0' : r); };
+  $('tilt').textContent = `${sign(deg(tiltMean[0]))}° / ${sign(deg(tiltMean[1]))}°`;
+}
+// The long record's verdict in one line: the best window's reward and when it came, and how
+// long ago the last progress was; red once that is past the stall the server names.
+function showProgress(p, moments) {
+  const el = $('progress');
+  if (!p) { el.textContent = '—'; el.className = 'v'; return; }
+  const n = v => Math.round(v).toLocaleString('en-US');
+  const from = p.since > 0 ? ` · counted from ${n(p.since)}` : '';
+  if (p.best === null) {
+    el.textContent = `first window at ${n(p.since + p.span)}` + (p.quiet > p.span ? ` · ${n(p.quiet)} moments` : '') + from;
+  } else {
+    el.textContent = (p.stalled ? '⚠ no progress for ' : 'last progress ') + `${n(p.quiet)} moments`
+      + ` · best ${fmt(p.best, 3)} at ${n(p.best_at)}` + from;
+  }
+  el.className = 'v' + (p.stalled ? ' warn' : '');
+}
+const payRows = new Map();
+const payShown = new Set();   // the terms the panel has shown on this page
+
+function payBar(bar, v, scale) {
+  const w = Math.min(50, 50 * Math.abs(v) / scale);
+  const fill = bar.querySelector('.fill');
+  fill.style.left = (v >= 0 ? 50 : 50 - w) + '%';
+  fill.style.width = w + '%';
+  fill.className = 'fill ' + (v >= 0 ? 'give' : 'take');
+}
+
+function payRow(name) {
+  let row = payRows.get(name);
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'pay-row';
+    row.innerHTML = `<span class="k"></span><div class="pay-bar"><div class="zero"></div><div class="cap lo"></div><div class="cap hi"></div><div class="fill"></div></div><span class="v"></span>`;
+    row.querySelector('.k').textContent = name;
+    payRows.set(name, row);
+  }
+  return row;
+}
+
+function placeCaps(bar, cap, scale) {
+  for (const [cls, sign] of [['lo', -1], ['hi', 1]]) {
+    const line = bar.querySelector('.cap.' + cls);
+    line.style.display = cap <= scale ? 'block' : 'none';
+    line.style.left = (50 + sign * 50 * cap / scale) + '%';
+  }
+}
+
+function drawPay(blocks, terms, cap, cappedShare) {
+  for (const b of blocks) if (b.reward_per_moment !== null && b.reward_per_moment !== undefined) payHistory.set(b.moment, b.reward_per_moment);
+  while (payHistory.size > PAY_HISTORY) payHistory.delete(payHistory.keys().next().value);
+  const box = $('pay-terms');
+  if (!terms.length) { box.replaceChildren(); $('pay-sum').textContent = '—'; $('pay-summary').textContent = '—'; drawPayHistory(cap); return; }
+  const sum = terms.reduce((a, [, v]) => a + v, 0);
+  const paidBlocks = blocks.filter(b => b.terms && b.reward_per_moment !== null && b.reward_per_moment !== undefined);
+  const paid = paidBlocks.length ? paidBlocks.reduce((a, b) => a + b.reward_per_moment, 0) / paidBlocks.length : null;
+  const need = Math.max(...terms.map(([, v]) => Math.abs(v)), Math.abs(sum), 0.05);
+  const scale = PAY_SCALES.find(s => s >= need) || need;
+  box.replaceChildren(...terms.map(([name, v]) => {
+    const row = payRow(name);
+    const bar = row.querySelector('.pay-bar');
+    payBar(bar, v, scale);
+    placeCaps(bar, cap, scale);
+    const label = row.querySelector('.v');
+    label.textContent = (v > 0 ? '+' : '') + fmt(v, 3);
+    label.className = 'v ' + (v > 0 ? 'give' : v < 0 ? 'take' : '');
+    return row;
+  }));
+  const sumRow = document.querySelector('#pay .pay-sum .pay-bar');
+  payBar(sumRow, sum, scale);
+  placeCaps(sumRow, cap, scale);
+  const tick = sumRow.querySelector('.tick');
+  tick.style.display = paid === null ? 'none' : 'block';
+  if (paid !== null) tick.style.left = (50 + 50 * Math.max(-1, Math.min(1, paid / scale))) + '%';
+  const over = Math.abs(sum) > cap;
+  $('pay-sum').textContent = (sum > 0 ? '+' : '') + fmt(sum, 3);
+  $('pay-sum').className = 'v ' + (over ? 'warn' : sum > 0 ? 'give' : sum < 0 ? 'take' : '');
+  $('pay-summary').textContent = `paid ${paid === null ? '—' : fmt(paid, 3)} · scale ±${scale}`
+    + (cappedShare === null || cappedShare === undefined ? '' : ` · capped ${Math.round(100 * cappedShare)}%`)
+    + (over ? ' · beyond the cap' : '');
+  drawPayHistory(cap);
+}
+
+function drawPayHistory(cap) {
+  const canvas = $('pay-history');
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 44, dpr = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const values = [...payHistory.values()];
+  const top = Math.max(cap, ...values.map(Math.abs), 0.05) * 1.05;   // the reward is held within the cap, so this is the cap
+  const y = v => h / 2 - (v / top) * (h / 2 - 2);
+  g.strokeStyle = '#4a556b'; g.lineWidth = 1; g.setLineDash([]);
+  g.beginPath(); g.moveTo(0, y(0)); g.lineTo(w, y(0)); g.stroke();
+  g.strokeStyle = '#8b94a7'; g.setLineDash([3, 3]);
+  for (const c of [cap, -cap]) { g.beginPath(); g.moveTo(0, y(c)); g.lineTo(w, y(c)); g.stroke(); }
+  g.setLineDash([]);
+  const last = values.length ? values[values.length - 1] : null;
+  $('pay-last').textContent = last === null ? '—' : (last > 0 ? '+' : '') + fmt(last, 3);
+  $('pay-last').className = 'v ' + (last === null ? '' : last <= -cap + 0.001 ? 'warn' : last > 0 ? 'give' : 'take');
+  if (values.length < 2) return;
+  const step = w / (PAY_HISTORY - 1), x0 = w - (values.length - 1) * step;
+  g.lineWidth = 1.5;
+  for (let i = 1; i < values.length; i++) {
+    const a = values[i - 1], b = values[i];
+    g.strokeStyle = (a + b) / 2 >= 0 ? '#7ee787' : '#ff6b6b';
+    g.beginPath(); g.moveTo(x0 + (i - 1) * step, y(a)); g.lineTo(x0 + i * step, y(b)); g.stroke();
+  }
+}
 // The stance hint in one line: what each count of feet down costs at the values in the fields,
 // so the pay and the floor read as the one charge they make (and the stand pay as its other side).
 function stanceSum() {
@@ -870,9 +1004,13 @@ function update(m) {
   const up = $('upright');
   up.textContent = fmt(m.upright, 2) + (m.upright > ((described && described.upright) || 0.5) ? '' : ' · fallen');
   up.className = 'v' + (m.upright > ((described && described.upright) || 0.5) ? '' : ' fallen');
-  $('tilt').textContent = m.tilt ? `${fmt(m.tilt[0] * 180 / Math.PI, 0)}° / ${fmt(m.tilt[1] * 180 / Math.PI, 0)}°` : '—';
+  showTilt(m.tilt);
+  showProgress(m.progress, m.moments);
   $('falls').textContent = (m.upright_share === null || m.upright_share === undefined ? '—' : Math.round(100 * m.upright_share) + '%') + ` · ${m.falls} fall${m.falls === 1 ? '' : 's'}`;
-  $('stance').textContent = m.pose.planted.filter(Boolean).length + ' / ' + m.pose.planted.length;
+  // beside the feet planted now, their mean over the last 1000 moments: the last ten blocks' mean stance
+  const last10 = m.blocks.filter(b => b.mean_stance !== undefined && b.mean_stance !== null).slice(-10);
+  $('stance').textContent = m.pose.planted.filter(Boolean).length + ' / ' + m.pose.planted.length
+    + (last10.length ? ` · ⌀ ${fmt(last10.reduce((a, b) => a + b.mean_stance, 0) / last10.length, 2)}` : '');
   const paid = m.blocks.filter(b => b.reward_per_moment !== undefined && b.reward_per_moment !== null);
   const lastPaid = paid.length ? paid[paid.length - 1].reward_per_moment : null;
   const meanPaid = paid.length ? paid.reduce((a, b) => a + b.reward_per_moment, 0) / paid.length : null;
@@ -884,7 +1022,9 @@ function update(m) {
   const termed = m.blocks.filter(b => b.terms);
   const TERM_NAMES = ['progress', 'stand', 'touchdown', 'idle', 'low', 'rear', 'head', 'stance', 'yaw', 'upright', 'torque'];
   const termMean = k => termed.reduce((a, b) => a + (b.terms[k] || 0), 0) / termed.length;
-  const shown = termed.length ? TERM_NAMES.filter(k => k === 'progress' || termed.some(b => b.terms[k])) : [];
+  // a term once shown stays shown (at 0 when it pays nothing now), so the rows below do not move
+  for (const k of TERM_NAMES) if (termed.some(b => b.terms[k])) payShown.add(k);
+  const shown = termed.length ? TERM_NAMES.filter(k => k === 'progress' || payShown.has(k)) : [];
   // what the law gives against what it takes, before the cap: a charge larger than every gift
   // leaves no act that pays, only acts that cost less
   const given = termed.length ? TERM_NAMES.reduce((a, k) => a + Math.max(0, termMean(k)), 0) : 0;
@@ -893,10 +1033,6 @@ function update(m) {
     ? `given +${fmt(given, 3)} · taken ${fmt(taken, 3)}` + (given + taken < 0 ? ' · the charges outweigh every gift' : '')
     : '—';
   $('reward-balance').className = 'v' + (termed.length && given + taken < 0 ? ' warn' : '');
-  $('reward-terms').textContent = termed.length
-    ? shown.map(k => `${k} ${fmt(termMean(k), 3)}`).join(' · ') + ` (over ${termed.length * 100})`
-      + (termed.some(b => b.touchdowns !== undefined) ? ` · ${termed.reduce((a, b) => a + (b.touchdowns || 0), 0)} touchdowns` : '')
-    : '—';
   const r = described && described.reward;
   const worst = r && r.worst_charge !== undefined ? r.worst_charge : null;
   const cap = (r && r.cap) || 0.5;
@@ -905,6 +1041,7 @@ function update(m) {
   $('worst-charge').textContent = (worst === null ? '—' : `${fmt(worst, 3)} of ${fmt(cap, 2)}${worst >= cap ? ' · can reach the cap' : ''}`)
     + (cappedShare === null ? '' : ` · capped ${Math.round(100 * cappedShare)}% of ${shared.length * 100}`);
   $('worst-charge').className = 'v' + ((worst !== null && worst >= cap) || cappedShare > 0.05 ? ' warn' : '');
+  drawPay(m.blocks, termed.length ? shown.map(k => [k, termMean(k)]) : [], cap, cappedShare);
   const stanced = m.blocks.filter(b => b.mean_stance !== undefined && b.mean_stance !== null);
   $('mean-stance').textContent = stanced.length
     ? `${fmt(stanced.reduce((a, b) => a + b.mean_stance, 0) / stanced.length, 2)} over ${stanced.length * 100} · last 100: ${fmt(stanced[stanced.length - 1].mean_stance, 2)}`
@@ -915,10 +1052,6 @@ function update(m) {
   $('pause').dataset.op = m.paused ? 'resume' : 'pause';
   for (const b of document.querySelectorAll('button[data-op=policy]')) b.classList.toggle('on', b.dataset.value === m.policy);
   for (const b of document.querySelectorAll('button[data-op=pace]')) b.classList.toggle('on', Number(b.dataset.value) === m.pace);
-  const blocks = m.blocks.slice(-4);
-  $('blocks').textContent = blocks.length
-    ? 'last blocks (100 moments): ' + blocks.map(b => `${b.forward_m >= 0 ? '+' : ''}${b.forward_m.toFixed(3)} m, ${b.reward_per_moment.toFixed(3)} r`).join(' · ')
-    : '';
   const notes = $('notes');
   const pinned = notes.scrollHeight - notes.scrollTop - notes.clientHeight < 4;   // at the end, or not yet scrolling
   notes.textContent = m.notes.join('\n');

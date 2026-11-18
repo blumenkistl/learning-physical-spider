@@ -44,8 +44,7 @@ judgement and labelled so.
 ### Stage 1: stand up (measured on newborns)
 
 ```bash
-.venv/bin/python server.py --port 8081 --runs runs/mine --seed 22 \
-  --layout pair --compass --ground --up --load --gene hold=0.9 --gene arousal.need=0.1 \
+.venv/bin/python server.py --layout pair --compass --ground --up --load --gene hold=0.9 --gene arousal.need=0.1 \
   --stance-pay 0.08 --stance-floor 3 --stand-pay 0.06 --carry --carry-back \
   --low-pay 0.1 --rear-pay 0.1 --head-pay 0.01 --touchdown-pay 0.05 --upright-pay 0.01 \
   --course 1.238 --backward-pay 1 --pay-per-metre 60

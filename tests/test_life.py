@@ -1253,3 +1253,41 @@ def test_the_living_brains_need_is_retuned_noted_and_saved(tmp_path):
         assert a["commands"] == b["commands"] and a["reward"] == b["reward"]
     again.reset({"seed": 1})
     assert again.gene_changes == [] and again.need() == pytest.approx(0.1)
+
+
+def _block(moment, reward, policy="brain"):
+    return {"moment": moment, "reward_per_moment": reward, "mean_stance": 1.0, "upright_share": 1.0, "policy": policy}
+
+
+def test_progress_names_a_stall_and_a_law_change_counts_again():
+    from spider.life import PROGRESS_SPAN, PROGRESS_STALL, Progress
+    progress = Progress()
+    blocks = PROGRESS_SPAN // BLOCK
+    moment = 0
+    for window, reward in enumerate([-0.4, -0.3] + [-0.295] * 12):   # a gain, then gains below the margin
+        for _ in range(blocks):
+            moment += BLOCK
+            progress.add(_block(moment, reward), moment - BLOCK)
+    reading = progress.reading(moment)
+    assert reading["best"] == -0.3 and reading["best_at"] == 2 * PROGRESS_SPAN
+    assert reading["quiet"] == moment - 2 * PROGRESS_SPAN and reading["stalled"] == (reading["quiet"] >= PROGRESS_STALL)
+    assert reading["stalled"]
+    progress.add(_block(moment + BLOCK, 5.0, policy="random"), moment)   # not the brain's: not counted
+    assert progress.reading(moment)["best"] == -0.3
+    progress.restart(moment)
+    reading = progress.reading(moment)
+    assert reading["best"] is None and reading["since"] == moment and not reading["stalled"]
+    again = Progress.from_state(json.loads(json.dumps(progress.state_dict())), moment)
+    assert again.reading(moment) == reading
+
+
+def test_progress_is_saved_with_the_life(tmp_path):
+    life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    for _ in range(BLOCK + 2):
+        life.tick()
+    assert life.latest["progress"]["best"] is None
+    life.progress.best, life.progress.best_at = -0.25, 50
+    life.save()
+    again = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.progress.reading(again.moments) == life.progress.reading(life.moments)
