@@ -581,7 +581,7 @@ class Life:
         self.touchdown_pay = law["touchdown_pay"]   # 0 switches the set-down hint off
         self.low_pay = law["low_pay"]         # 0 switches the ride-height hint off
         self.rear_pay = law["rear_pay"]       # 0 switches the abdomen's ride-height hint off
-        self.arena = law["arena"]               # the ground: flat, hills, steep, rough or rocks; laid under the living body
+        self.arena = law["arena"]               # the ground: flat, hills, steep or rocks; laid under the living body
         if hasattr(self, "body"):
             self.body.set_arena(self.arena)
         self.window = law["window"]

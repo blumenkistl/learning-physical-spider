@@ -14,8 +14,7 @@ origin with its pose, velocity and heading kept (the floor is an endless plane, 
 touches changes).
 
 The arena is the world's ground, not the body: ``flat`` is MuJoCo's plane at z = 0, the founder's
-world bit for bit; ``rough`` is level on the whole but grained (``GRAIN_HEIGHT`` either way on a
-``GRAIN_STEP`` lattice); ``hills`` is a fixed rolling terrain, the sum of four long waves (``HILLS``,
+world bit for bit; ``hills`` is a fixed rolling terrain, the sum of four long waves (``HILLS``,
 learning-spider's, about ±6 cm), and ``steep`` the same waves ``STEEP_FACTOR`` times as high
 (about ±15 cm; learning-spider's steep is 1.5 times, a body that could not tilt); ``rocks`` is
 level with angular rocks lying on it, blocks and spikes 2 to 8 cm high, boulders up to 18 cm and
@@ -62,14 +61,8 @@ HILLS = ((2.4, 0.35, 0.022, 0.3), (1.7, 2.0, 0.015, 1.1), (3.1, 3.6, 0.016, 2.0)
 STEEP_FACTOR = 2.5
 STEEP = tuple((w, d, round(STEEP_FACTOR * a, 4), ph) for w, d, a, ph in HILLS)
 TERRAINS = {"hills": HILLS, "steep": STEEP}
-# The rough ground: level on the whole, grained. A fixed random height at every node of a square
-# lattice GRAIN_STEP apart, up to GRAIN_HEIGHT either way, joined by MuJoCo's flat triangles: what
-# a claw can catch on, which no plane and no smooth wave has. Chosen (probed, README).
-GRAIN_STEP = 0.01
-GRAIN_HEIGHT = 0.003
-GRAINED = ("rough",)
 # The rocks: level ground with rocks lying on it. The plane is cut into square cells ROCK_CELL a
-# side; a fixed hash of the cell (the rough ground's, the same in every life) says whether it holds
+# side; a fixed hash of the cell (``_grain``, the same in every life) says whether it holds
 # a rock (ROCK_SHARE of them do) and its shape, wholly inside a circle of its radius inside the cell.
 # Most rocks are small (ROCK_HEIGHT high, within ROCK_RADIUS), ROCK_BIG of them boulders
 # (ROCK_BIG_HEIGHT, ROCK_BIG_RADIUS). A rock is convex: ROCK_FACETS flanks round it, turned
@@ -134,7 +127,7 @@ ROCK_HILLS = tuple((ROCK_HILLS_STRETCH * w, d, round(ROCK_HILLS_HEIGHT * a / sum
                    for w, d, a, ph in HILLS)
 ROCK_STEP = 0.01                          # m between the field's samples on the rocks: the edges stay sharp
 ROCKY = ("rocks",)
-ARENAS = ("flat",) + tuple(TERRAINS) + GRAINED + ROCKY   # the ground: the plane z = 0 (the founder), or a terrain
+ARENAS = ("flat",) + tuple(TERRAINS) + ROCKY   # the ground: the plane z = 0 (the founder), or a terrain
 _WAVES = {name: np.array([(2 * math.pi / w * math.cos(d), 2 * math.pi / w * math.sin(d), a, ph) for w, d, a, ph in waves])
           for name, waves in TERRAINS.items()}
 TERRAIN_STEP = 0.05                       # m between the height field's samples (chosen: the shortest wave is 1.3 m)
@@ -148,7 +141,7 @@ def _samples(arena: str) -> int:
 
 
 def _grain(i: np.ndarray, j: np.ndarray) -> np.ndarray:
-    """The rough ground's fixed height at lattice node ``i``, ``j``, in -1..1: a hash of the two
+    """A fixed draw for lattice node ``i``, ``j``, in -1..1 (the rocks' hash): a hash of the two
     integers, the same on every machine and in every life."""
     with np.errstate(over="ignore"):              # the hash wraps around 2**64 by design
         h = (np.asarray(i).astype(np.int64).astype(np.uint64) * np.uint64(0x9E3779B97F4A7C15)
@@ -160,8 +153,8 @@ def _grain(i: np.ndarray, j: np.ndarray) -> np.ndarray:
 
 
 def terrain_step(arena: str) -> float:
-    """Metres between the height field's samples: the grain's lattice on the rough ground."""
-    return GRAIN_STEP if arena in GRAINED else ROCK_STEP if arena in ROCKY else TERRAIN_STEP
+    """Metres between the height field's samples."""
+    return ROCK_STEP if arena in ROCKY else TERRAIN_STEP
 
 
 SMALL, GIANT, PLATEAU = 0, 1, 2           # the rocks' lattices
@@ -169,8 +162,8 @@ GIANT_ROW = 1 << 40                      # a lattice's draws lie this far along 
 
 
 def _rock_draws(i, j, layer: int = SMALL) -> np.ndarray:
-    """Forty-eight fixed draws in 0..1 for cell ``i``, ``j`` of lattice ``layer``: the rough
-    ground's hash at nodes ``48 i + k``, ``j + layer * GIANT_ROW``."""
+    """Forty-eight fixed draws in 0..1 for cell ``i``, ``j`` of lattice ``layer``: ``_grain``'s
+    hash at nodes ``48 i + k``, ``j + layer * GIANT_ROW``."""
     i, j = np.asarray(i, dtype=np.int64), np.asarray(j, dtype=np.int64) + layer * GIANT_ROW
     return np.stack([(_grain(48 * i + k, j) + 1.0) / 2.0 for k in range(48)])
 
@@ -344,19 +337,12 @@ def _lay_rocks(field: np.ndarray, shape: dict, xs: np.ndarray, ys: np.ndarray) -
 def ground_height(arena: str, x, y) -> np.ndarray:
     """The ground's height in metres at world points ``x``, ``y`` (the terrain's own frame: the
     body's place plus the field's ``offset``): 0 on ``flat``, the sum of the arena's waves on
-    ``hills`` and ``steep``, the lattice's on ``rough``, the hills, a plateau and a rock on ``rocks``. MuJoCo's field
+    ``hills`` and ``steep``, the hills, a plateau and a rock on ``rocks``. MuJoCo's field
     joins these heights, sampled every ``terrain_step``, by flat triangles."""
     x, y = np.asarray(x, dtype=float), np.asarray(y, dtype=float)
     h = np.zeros(np.broadcast(x, y).shape)
     if arena == "flat":
         return h
-    if arena in GRAINED:                  # the lattice's heights, joined bilinearly between nodes
-        u, v = x / GRAIN_STEP, y / GRAIN_STEP
-        i, j = np.floor(u), np.floor(v)
-        fu, fv = u - i, v - j
-        i, j = np.broadcast_to(i, h.shape), np.broadcast_to(j, h.shape)
-        return GRAIN_HEIGHT * ((1 - fu) * (1 - fv) * _grain(i, j) + fu * (1 - fv) * _grain(i + 1, j)
-                               + (1 - fu) * fv * _grain(i, j + 1) + fu * fv * _grain(i + 1, j + 1))
     if arena in ROCKY:                    # level, but for the rock of the point's cell
         x, y = np.broadcast_to(x, h.shape).astype(float), np.broadcast_to(y, h.shape).astype(float)
         return _rocks_height(x, y)
@@ -367,8 +353,6 @@ def ground_height(arena: str, x, y) -> np.ndarray:
 
 def _relief(arena: str) -> float:
     """The most the terrain rises or falls from 0: the sum of its amplitudes."""
-    if arena in GRAINED:
-        return GRAIN_HEIGHT
     if arena in ROCKY:
         return max(ROCK_PLATEAU_HEIGHT[1] + ROCK_BIG_HEIGHT[1], 2 * ROCK_HILLS_HEIGHT + ROCK_GIANT_HEIGHT[1])   # no giant on a plateau
     return float(np.abs(_WAVES[arena][:, 2]).sum())

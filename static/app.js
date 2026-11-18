@@ -385,7 +385,8 @@ function setGroundColour(hex) { groundHex = hex; if (surfaceName === 'plain') gr
 // a leg runs from inside the prosoma (the coxa) to MuJoCo's hip, knee, ankle and foot, brought into the
 // torso's frame. The page does no kinematics: every joint point is the model's.
 // Drawn radii, chosen by eye after a red-knee tarantula's photograph (a leg about a fifth of the
-// prosoma's width, hair included); the model's collision capsules stay thinner (shape.leg_radius).
+// prosoma's width, hair included); the model's femur and tibia capsules are as thick (shape.leg_radius:
+// femur, tibia, tarsus); its tarsus stays thinner than the foot, so the foot meets the floor.
 const FEMUR_R = 0.021, TIBIA_R = 0.018, COXA_R = 0.024, TARSUS_R = 0.013;
 const ROOT_Y = 0.03;                                  // where a leg leaves the body: well inside the ellipsoid
 const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _h = new THREE.Vector3(), _r = new THREE.Vector3(), _d = new THREE.Vector3(), _k = new THREE.Vector3(), _yUp = new THREE.Vector3(0, 1, 0);

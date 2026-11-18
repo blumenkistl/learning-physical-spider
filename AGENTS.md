@@ -54,7 +54,7 @@ window on that one life.
   (off by default, measured dose, labelled as shaping).
 - **The arena is the world's, not the body's.** `flat` (the plane, the founder), `hills` or
   `steep` (learning-spider's waves, steep at 2.5 times hills, as a MuJoCo height field, `spider/body.py`),
-  `rough` (level but grained, ±3 mm every centimetre, the same height field), or `rocks` (rolling hills up to 14 cm with
+  or `rocks` (rolling hills up to 14 cm with
   angular rocks lying on it, blocks and spikes 2 to 8 cm high, boulders up to 18 cm and giants up to 60 cm, and level plateaus up to 40 cm high and 8 m or more across with ramps all round, bare or of rock with rocks on them, the same height field). The arena does not
   change `MODEL_DIGEST`; it is set, shown, saved and counted with the law like any law setting,
   named in every reading, and a recentre moves the ground with the body. The brain senses no

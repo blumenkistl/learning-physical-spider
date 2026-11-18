@@ -5,7 +5,7 @@ import mujoco
 import numpy as np
 import pytest
 
-from spider.body import ARENA_RADIUS, ARENAS, GRAIN_HEIGHT, GRAIN_STEP, ROCK_BIG_HEIGHT, ROCK_BIG_RADIUS, ROCK_CELL, ROCK_GIANT_CELL, ROCK_GIANT_HEIGHT, _relief, ROCK_CLEAR, ROCK_HEIGHT, ROCK_RADIUS, ROCK_STEP, _rock_hills, _rock_shape, rock, STEEP_FACTOR, HIGH, LOW, MODEL_XML, SUBSTEPS, TERRAIN_HALF, TERRAIN_STEP, Spider, ground_height, model_xml, terrain_step
+from spider.body import ARENA_RADIUS, ARENAS, ROCK_BIG_HEIGHT, ROCK_BIG_RADIUS, ROCK_CELL, ROCK_GIANT_CELL, ROCK_GIANT_HEIGHT, _relief, ROCK_CLEAR, ROCK_HEIGHT, ROCK_RADIUS, ROCK_STEP, _rock_hills, _rock_shape, rock, STEEP_FACTOR, HIGH, LOW, MODEL_XML, SUBSTEPS, TERRAIN_HALF, TERRAIN_STEP, Spider, ground_height, model_xml, terrain_step
 from spider.model import DT, HEIGHT, HIP_RATE, JOINTS, TIMESTEP
 
 HOLD = [1] * JOINTS
@@ -172,7 +172,7 @@ def test_the_belly_on_the_floor_is_read():
 
 
 def test_the_flat_arena_is_the_plane_and_the_terrains_are_learning_spiders_waves():
-    assert ARENAS == ("flat", "hills", "steep", "rough", "rocks")
+    assert ARENAS == ("flat", "hills", "steep", "rocks")
     assert model_xml("flat") == MODEL_XML                      # the founder's world, bit for bit
     xs, ys = np.meshgrid(np.linspace(-5, 5, 41), np.linspace(-5, 5, 41))
     assert STEEP_FACTOR == 2.5
@@ -229,36 +229,6 @@ def test_the_ground_moves_with_the_recentre_on_the_hills():
     assert np.allclose(under, after, atol=1e-9)                # the same terrain under every foot
     out = spider.step(HOLD)                                    # and the moved field carries the body on
     assert not out["recentred"] and spider.data.ncon > 0
-
-
-def test_the_rough_ground_is_level_on_the_whole_and_grained():
-    """Fixed heights on a lattice GRAIN_STEP apart, up to GRAIN_HEIGHT either way, the same in
-    every call; the field MuJoCo holds is those heights."""
-    assert terrain_step("rough") == GRAIN_STEP and terrain_step("hills") == TERRAIN_STEP
-    xs, ys = np.meshgrid(np.linspace(-5, 5, 401), np.linspace(-5, 5, 401))
-    h = ground_height("rough", xs, ys)
-    assert np.array_equal(h, ground_height("rough", xs, ys))
-    assert np.abs(h).max() <= GRAIN_HEIGHT + 1e-12 and abs(h.mean()) < 0.1 * GRAIN_HEIGHT
-    assert h.std() > 0.3 * GRAIN_HEIGHT                       # grained, not level
-    spider = settle(Spider("rough"), 40)
-    assert spider.upright > 0.9 and spider.planted().all()
-    field = spider.model.hfield_data.reshape(spider.model.hfield_nrow[0], spider.model.hfield_ncol[0])
-    middle = field.shape[0] // 2
-    assert spider.model.hfield_nrow[0] == round(2 * TERRAIN_HALF / GRAIN_STEP) + 1
-    node = (field[middle, middle + 3] * 2 - 1) * GRAIN_HEIGHT                # the node 3 grains along x
-    assert node == pytest.approx(float(ground_height("rough", 3 * GRAIN_STEP, 0.0)), abs=1e-6)
-
-
-def test_the_rough_ground_moves_with_the_recentre():
-    spider = settle(Spider("rough"))
-    spider.data.qpos[0:2] = (ARENA_RADIUS + 0.123, -0.4)
-    mujoco.mj_forward(spider.model, spider.data)
-    under = spider.ground(spider.data.geom_xpos[spider._feet, 0], spider.data.geom_xpos[spider._feet, 1])
-    spider.recentre()
-    mujoco.mj_forward(spider.model, spider.data)
-    assert math.hypot(spider.x, spider.y) < GRAIN_STEP
-    after = spider.ground(spider.data.geom_xpos[spider._feet, 0], spider.data.geom_xpos[spider._feet, 1])
-    assert np.allclose(under, after, atol=1e-9)
 
 
 def test_the_rocks_lie_on_rolling_ground_each_inside_its_cell():

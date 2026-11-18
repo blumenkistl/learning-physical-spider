@@ -490,8 +490,8 @@ time, and the seeds spread from under 1 % to 79 %. Forward metres spread from �
 
 ## The hills (`spider/body.py`, the page's arena)
 
-The world has five arenas (`--arena`, `ARENA` for the server; `flat` is the default and the
-founder's), learning-spider's three, `rough` and `rocks`: `flat` is MuJoCo's plane at z = 0, the world bit for bit as
+The world has four arenas (`--arena`, `ARENA` for the server; `flat` is the default and the
+founder's), learning-spider's three and `rocks`: `flat` is MuJoCo's plane at z = 0, the world bit for bit as
 it was; `hills` is a fixed rolling terrain, the sum of four cosine waves of 1.3 to 3.1 m wavelength
 (`HILLS`, learning-spider's numbers, about ±6 cm); `steep` is the same waves at 2.5 times the
 amplitude (`STEEP_FACTOR`, about ±15 cm, slopes 0.16 in the median and up to 0.36), higher than
@@ -506,8 +506,36 @@ tilts, slips, climbs and falls on it by MuJoCo's contacts, where learning-spider
 tilt. There is no slope force but gravity and no height sense; the brain meets the terrain through
 its joints, its feet's contacts, its tilt and its speed.
 
-`rough` is this project's own, added on the owner's ask (2026-11-16) after the claw probe above:
-level on the whole but grained, a fixed random height (a hash of the lattice node, the same in
+`rough` was removed on the owner's choice (2026-11-18) as unrealistic. A reading (body
+`6626e8e289933daf`, random commands, 300 moments at three seeds): on `rough` 4.1 feet were planted
+in the mean and the belly lay on the floor 52 % of the time, on `flat` 0.39 and 88 %; a height field
+with no grain at all gave 3.8, and a foot's grip on `flat` raised to 10 gave 0.48. The difference was
+not grip: a foot on the 1 cm field met it in 13 to 15 contacts, some with sideways normals (the
+field's cell walls) pressing 100 to 700 mN against the foot and claw, several times what a foot
+carries, and a knee at its full torque (40 mN m) could not lift it (a state copied from `rough` to
+`flat` lifted the same foot 11 cm in the same 50 ms). The feet were wedged, not standing. The physics
+there cost about 28 ms a moment against 2 on `flat`. The probe below was made on it while it was here
+(it named the arena `rough`), and its readings carry that wedging.
+
+The other height fields wedged the same foot, less: the foot sphere was 8 mm then. A reading (body
+`6626e8e289933daf` with the foot sphere changed alone, random commands, 300 moments at two seeds,
+the foot spheres' contacts only):
+
+| arena | foot radius | feet down | belly down | foot contacts a moment | of them steeper than 60° | ms a moment |
+| --- | --- | --- | --- | --- | --- | --- |
+| `flat` | 8 mm | 0.23 | 91 % | 0.2 | 0 % | 1.9 |
+| `flat` | 16 mm | 0.46 | 90 % | 0.5 | 0 % | 1.8 |
+| `hills` | 8 mm | 0.93 | 77 % | 2.0 | 0 % | 3.7 |
+| `hills` | 16 mm | 0.35 | 90 % | 0.6 | 0 % | 2.9 |
+| `rocks` | 8 mm | 3.58 | 51 % | 26.6 | 18 % | 27.7 |
+| `rocks` | 16 mm | 0.39 | 91 % | 1.9 | 0 % | 12.3 |
+
+At 25 mm the readings were those of 16. From 16 mm on, the height fields read as the plane does;
+the feet that stood on `rocks` at 8 mm were wedged. The foot is 16 mm since body
+`3115e097637e9120` (the owner's choice, 2026-11-18). It grips no harder: MuJoCo's friction, like
+Coulomb's, knows no contact area (a sole of five spheres on `flat`, probed before, changed nothing).
+
+`rough` was level on the whole but grained, a fixed random height (a hash of the lattice node, the same in
 every life) every centimetre (`GRAIN_STEP`) up to 3 mm either way (`GRAIN_HEIGHT`), joined by the
 height field's flat triangles. The page draws it flat; the grain is too fine to see. A probe
 (scripted, outside any life, body `2bd499aae3fd2b8b`, the mean of three places of the grain; the
@@ -526,7 +554,7 @@ measures of the claw probe):
 
 `rocks` is this project's own too, added on the owner's ask (2026-11-16): rolling ground with
 rocks lying on it, angular, some pointed, some large. The plane is cut into cells 60 cm a side
-(`ROCK_CELL`); the rough ground's hash of the cell (the same in every life) says whether it holds a
+(`ROCK_CELL`); a fixed hash of the cell (the same in every life) says whether it holds a
 rock (65 in 100, `ROCK_SHARE`) and its shape. A rock is a convex block wholly inside a circle round
 its centre inside its cell: most are 2 to 8 cm high within 8 to 20 cm (`ROCK_HEIGHT`,
 `ROCK_RADIUS`), 15 in 100 boulders 8 to 18 cm high within 20 to 29 cm (`ROCK_BIG`,
