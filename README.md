@@ -13,6 +13,34 @@ falls. What came over from learning-spider, and how, is in [PORTING.md](PORTING.
 measured on newborns: a start law that brings three of four off the belly ("How to get your spider
 running"). Walking straight is not yet learned; everything else is readings or unmeasured.
 
+## Installation
+
+From nothing to the page, on a new computer:
+
+```sh
+git clone https://github.com/blumenkistl/learning-physical-spider.git
+cd learning-physical-spider
+sudo apt install python3-venv python3-pip             # once, on Debian or Ubuntu; WSL2 too
+python3 -m venv .venv                                 # the project's own Python, in .venv/
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m pytest                            # 125 pass, in about a minute
+.venv/bin/python server.py                            # then open http://127.0.0.1:8080
+```
+
+The venv keeps the project's packages apart from the system's. It needs no activation: every
+command in this README names `.venv/bin/python`. Whoever prefers it activates it with
+`source .venv/bin/activate` and writes `python` instead. `.venv/` is gitignored, and so is
+`runs/`, where the server saves the life and continues it from.
+
+`requirements.txt` brings everything: `cadence-net[fast]==0.99.0` (the brain; `[fast]` is numba
+and scipy, the compiled CPU path), `mujoco==4.0.1` (the physics, a wheel that needs no system
+library and no display), numpy, aiohttp (the server) and pytest with its plugins (the tests).
+CPU only: nothing installs torch or CUDA, and no graphics card is used. Developed on Python 3.12
+under Linux (WSL2); other versions and systems are untried.
+
+The two entry points, the headless nursery and the server with the page:
+
 ```
 .venv/bin/python -m spider.nursery --moments 3000 --policy brain --seed 0
 .venv/bin/python server.py --port 8081 --runs runs/try --autosave-minutes 0
@@ -958,10 +986,12 @@ and a reset starts the newborn's genes again. Unmeasured on this body.
 
 ## Running
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest
+The venv and the packages are set up once, as in "Installation" at the top. Then:
+
+```sh
+.venv/bin/python -m pytest                                        # the tests
+.venv/bin/python -m spider.nursery --moments 3000 --policy brain  # a headless life, measured
+.venv/bin/python server.py                                        # the page, at http://127.0.0.1:8080
 ```
 
 CPU only: no torch, no CUDA. One moment costs about 1 ms of physics on the development
