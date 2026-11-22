@@ -444,31 +444,55 @@ def test_reset_takes_a_birth(tmp_path):
     assert plain["seed"] == 3 and life.senses.compass is True
 
 
-def test_the_heard_history_is_a_birth_option_saved_with_the_life(tmp_path):
-    """The page's history field sends the nursery's word: the newborn hears the moments before, a
-    save keeps the gene, a load composes the same brain again, and a birth without it has none."""
+def test_the_heard_history_is_a_founder_gene_and_a_birth_option(tmp_path):
+    """The founder hears the moments before (history_decays 0, 0.8, 0.97); the page's history field
+    sends the nursery's word for another, ``none`` for the founder before it; a save keeps the gene
+    and a load composes the same brain again."""
     life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
-    assert life.policy.brain.history is None                   # the founder hears only this moment
-    plain = life.policy.brain.connectome.n
+    founder = life.policy.brain
+    assert founder.history is not None and tuple(founder.history.decays) == (0.0, 0.8, 0.97)
     with pytest.raises(ValueError):
         life.control("reset", {"genes": "history_decays=0,1.5"})   # refused before the old life ends
-    assert life.policy.brain.history is None
-    report = life.control("reset", {"genes": "history_decays=0,0.8,0.97"})
-    assert report["genes"] == {"history_decays": [0, 0.8, 0.97]}
-    brain = life.policy.brain
-    assert brain.history is not None and brain.connectome.n > plain
-    assert life.describe()["genes"] == {"history_decays": [0, 0.8, 0.97]}
+    assert life.policy.brain is founder
+    report = life.control("reset", {"genes": "history_decays=none"})
+    assert report["genes"] == {"history_decays": None}
+    plain = life.policy.brain
+    assert plain.history is None and plain.connectome.n < founder.connectome.n
+    assert life.describe()["genes"] == {"history_decays": None}
     for _ in range(4):
         life.tick()
     assert life.reward is not None
     life.save()
-    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")   # the flags name no history
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")   # the flags name the founder
     again.load()
-    assert again.genes == {"history_decays": [0, 0.8, 0.97]} and again.policy.brain.history is not None
-    assert again.policy.brain.connectome.n == brain.connectome.n
+    assert again.genes == {"history_decays": None} and again.policy.brain.history is None
+    assert again.policy.brain.connectome.n == plain.connectome.n
     again.tick()
+    other = again.control("reset", {"genes": "history_decays=0,0.7"})
+    assert other["genes"] == {"history_decays": [0, 0.7]} and tuple(again.policy.brain.history.decays) == (0.0, 0.7)
     again.control("reset", {"genes": ""})                      # the founder again
-    assert again.policy.brain.history is None and again.policy.brain.connectome.n == plain
+    assert again.policy.brain.connectome.n == founder.connectome.n
+
+
+def test_a_life_saved_before_the_founders_history_keeps_its_own(tmp_path):
+    """A founder life saved before 2026-11-22 has no heard history and no gene that says so: the
+    load keeps its brain, notes it and names the gene, so the same birth again is the same brain."""
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu", genes={"history_decays": None})
+    for _ in range(3):
+        life.tick()
+    life.save()
+    sidecar = json.loads(life.sidecar.read_text())
+    sidecar["genes"] = {}                                      # as such a life was saved: the founder's, unnamed
+    life.sidecar.write_text(json.dumps(sidecar))
+    old = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    old.load()
+    assert old.policy.brain.history is None and old.genes == {"history_decays": None}
+    assert any("founder's heard history" in note for note in old.notes)
+    old.tick()
+    old.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    again.load()
+    assert again.genes == {"history_decays": None} and not any("founder's heard history" in n for n in again.notes)
 
 
 def test_a_saved_life_keeps_its_seed_and_senses(tmp_path):

@@ -45,7 +45,7 @@ def test_newborn_first_moments():
     assert life.has_pending()
     assert life.moments == 5 and life.refusals == 0
     d = life.describe()
-    assert d["neurons"] == 744 and d["pending"] and d["placement"]["backend"] == "cpu"
+    assert d["neurons"] == 744 + 3 * INPUTS and d["pending"] and d["placement"]["backend"] == "cpu"
 
 
 class StubBrain:
@@ -165,7 +165,8 @@ def test_spider_payload_and_the_learning_levels():
     n = int(brain.brain.connectome.n)
     assert len(payload["cells"]) == len(payload["order"]) == n
     assert sum(c["n"] - 1 for c in payload["cells"]) == FIBRE_NODES * int(brain.brain.connectome.synapses)
-    assert payload["classes"][0] == "sensory" and payload["classes"][-1] == "motor"
+    assert payload["classes"][0] == "sensory" and "motor" in payload["classes"]
+    assert "history" in payload["classes"]            # the founder's heard history is laid out too
     for cell in payload["cells"]:
         assert len(cell["xyz"]) == 3 * cell["n"] and len(cell["parent"]) == cell["n"]
         assert (cell["n"] - 1) % FIBRE_NODES == 0   # a fibre of FIBRE_NODES nodes per synapse

@@ -920,6 +920,47 @@ at these values; readings above that name founder genes and no slots were made u
 slot per joint. `entropy=0` in the genes and `--layout joint` (or the page's slots) give the old
 founder's.
 
+## The founder's heard history (`spider/brain.py`, the page's "next birth")
+
+From 2026-11-22 the founder hears the moments before: `history_decays` is `0, 0.8, 0.97` (cadence's
+heard history, docs/memory.md), three blocks that each bring the senses once more as a fading trace.
+A decay d reaches back about 1/(1−d) moments: this moment, about 5, and about 33. It was none before,
+so every reading above that says founder genes was made by a brain that heard only the moment;
+`history_decays=none` in the genes (the page's history field: `none`) gives that founder's brain. A
+life saved before the change keeps its own, none: the load notes it and names the gene.
+
+The owner's choice, on the look of one live life and not on a nursery comparison against none (an
+exception to AGENTS.md's rule for founder genes, as the hold and the entropy were). Unmeasured.
+
+Why 0.97: one leg of a standing newborn, commanded alone (body `3115e097637e9120`, flat), takes 10
+moments to lift its foot through the whole range, 4 to swing the hip from the middle to an end in
+the air and 10 to lower the foot, so a step with a full lift is about 36 moments or more. The page's
+field takes other blocks for a newborn.
+
+The readings it was chosen on, one life (seed 0, `leg`, all four senses, entropy 0.1 at birth and
+0.02 from moment 831, need 0.18 from 46,800, one law but for `pay_per_metre` 40 to 80 at 78,768;
+`stance_floor` 1, so one foot down counts as a stand):
+
+| Window of 10,000 moments ending at | Feet planted | Reward a moment |
+| --- | --- | --- |
+| 20,000 | 0.21 | −0.252 |
+| 50,000 | 0.76 | −0.159 |
+| 70,000 | 1.20 | −0.075 |
+| 108,700 | 1.32 | −0.021 |
+| 138,700 | 1.40 | +0.005 |
+
+At moment 141,000 it was given `stand_pay` in 83 % of the moments, with no fall. The life before it
+on this body (seed 0, `leg`, no history, entropy 0.1 for its first 1.3 million moments, a law changed
+some fifty times) had 0.76 feet planted at 45,000 and 0.26 at 80,000, and first stood in two moments
+of three while learning after about 860,000 (it had stood still in routine for some thousand moments
+at 576,000). The two lives differ in more than the history, so this is no measurement
+of it.
+
+What it costs: the brain has 2,520 neurons under `leg` with all four senses, against 888, and a
+moment of it costs about 15 ms on the development machine against about 6. A newborn's motor outputs
+also sit nearer their rails: the page's saturation read 0.99 at moment 300 against 0.90 without the
+history (one newborn each).
+
 ## The entropy, live (`spider/life.py`, the page's "brain, live")
 
 The brain's `entropy` gene can be retuned on the living brain (the control `entropy`, the page's

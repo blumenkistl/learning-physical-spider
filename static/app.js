@@ -873,9 +873,10 @@ function describedBy(d) {
   $('birth-hold').value = genes.hold == null ? '' : genes.hold;
   $('birth-entropy').value = genes.entropy == null ? FOUNDER_ENTROPY : genes.entropy;
   // hold=none (not the founder's 0.9) has no number for the field, so it stays in the text
-  // the heard history's blocks: a list, or one number; none is the founder's and the empty field
+  // the heard history's blocks: a list, or one number; the empty field is the founder's, and a
+  // life born without one (history_decays=none) shows the word
   const history = genes.history_decays;
-  $('birth-history').value = history == null ? '' : Array.isArray(history) ? history.join(',') : history;
+  $('birth-history').value = !('history_decays' in genes) ? '' : history == null ? 'none' : Array.isArray(history) ? history.join(',') : history;
   delete genes.history_decays;
   for (const k of ['hold', 'entropy']) if (!(k === 'hold' && k in genes && genes.hold == null)) delete genes[k];   // maturity and the codes stay in the text: off the page
   $('birth-genes').value = geneWords(genes);
@@ -1197,7 +1198,7 @@ function birth() {
   if ($('birth-hold').value !== '') words.push('hold=' + num($('birth-hold')));
   // entropy is sent whenever it is not the founder's, 0 included: an empty word would be the founder's 0
   if ($('birth-entropy').value !== '' && Number($('birth-entropy').value) !== FOUNDER_ENTROPY) words.push('entropy=' + Number($('birth-entropy').value));
-  // the heard history: decays between commas, spaces dropped (a word may hold none); empty is the founder's none
+  // the heard history: decays between commas, spaces dropped (a word may hold none), or the word none; empty is the founder's
   const history = $('birth-history').value.replace(/\s+/g, '').replace(/^,+|,+$/g, '');
   if (history !== '') words.push('history_decays=' + history);
   return { seed: num($('birth-seed')), layout: $('birth-layout').value,

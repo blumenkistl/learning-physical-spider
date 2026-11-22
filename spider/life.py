@@ -41,7 +41,7 @@ from . import body as _body
 from .model import (ABDOMEN, ABDOMEN_POS, BODY, CLAW_RADIUS, DT, FOOT_RADIUS, HEAD_RADIUS, HEAD_X, HEIGHT, HIP_X, HIP_Y, JOINTS, FEMUR_RADIUS, TIBIA_RADIUS, TARSUS_RADIUS, LEGS, LEG_NAMES,
                     MODEL_DIGEST, PER_SIDE, SIDE, WAIST, WAIST_RADIUS)
 from .brain import (DEFAULT_LAYOUT, LAYOUTS, FrozenPolicy, RandomPolicy, SpiderBrain, backend_of, fitted, gene_words,
-                    genes_from_text, make_policy)
+                    genes_from_text, genes_of, make_policy)
 from .senses import DEFAULT as DEFAULT_SENSES, Senses
 
 PROGRESS_PAY = 40.0     # reward per metre forward: 0.4 a moment at the full stroke speed of 0.2 m/s;
@@ -1165,6 +1165,11 @@ class Life:
                 # the layout is composed into the brain: the saved life keeps its own
                 self.notes.append(f"saved with a slot per {brain.layout}, asked for a slot per {self.layout}: the saved life keeps its own")
                 self.layout = brain.layout
+            if brain.brain.history is None and genes_of(self.genes)["history_decays"]:
+                # the heard history is composed into the brain: a life saved before the founder had one
+                # (2026-11-22) keeps its own, none, and its genes say so from here on
+                self.notes.append("saved before the founder's heard history: the saved life keeps its own, none")
+                self.genes = {**(self.genes or {}), "history_decays": None}
             self.policy = brain
             self._brain = None
             if state is not None:

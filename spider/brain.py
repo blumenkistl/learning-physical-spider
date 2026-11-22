@@ -150,9 +150,12 @@ FOUNDER: dict[str, Any] = {
     # chosen here, unmeasured against the arena's values:
     "modules": [64, 32],            # the arena: [48, 24] on 32 inputs; learning-spider 152 coded inputs, here 424
     "recall": False,                # 0.97.1 composes a recall memory by default; off for cost
-    "history_decays": [],           # no heard history: the brain hears only this moment (0.97.1 composes
-                                    # one only with recall); blocks of decays (--gene history_decays=0,0.7,0.95)
-                                    # would give it the moments before, a candidate gene for a gait
+    "history_decays": [0, 0.8, 0.97],   # the heard history: the senses again per block as a fading trace of the
+                                    # moments before, a decay d reaching back about 1/(1-d) moments (this moment,
+                                    # about 5, about 33: near a whole step of this body, README "The founder's heard
+                                    # history"). The owner's choice (2026-11-22) on one live life's look, not on a
+                                    # nursery comparison (an exception to AGENTS.md's rule, named in the README);
+                                    # none until then, and ``history_decays=none`` gives that founder's brain
     # the reward learner's options (cadence docs/reward.md), each at the value that keeps the
     # composed actor to the bit; measured in the README's "The reward learner's options":
     "hold": 0.9,                    # the actor's eligibility decay apart from the critic's: 0.9 a horizon
@@ -278,7 +281,7 @@ def compose(
         working_memory_decay=float(g["trace_decay"]),
         efference_amplitude=float(g["efference_amplitude"]),
         efference_decay=float(g["efference_decay"]),
-        history_decays=tuple(float(d) for d in np.atleast_1d(g["history_decays"])),
+        history_decays=() if g["history_decays"] is None else tuple(float(d) for d in np.atleast_1d(g["history_decays"])),
         arousal=dict(g["arousal"]),
         scales={"sensory": float(g["sensory_scale"]), "trace": float(g["trace_scale"])},
         temperature=float(g["temperature"]),
@@ -304,6 +307,12 @@ def hold_commands() -> list[int]:
     return [1] * JOINTS
 
 
+def _rounded(values: Any) -> list[float]:
+    """``values`` to two decimals for the page, in one pass: a brain with a heard history has
+    thousands of neurons, and rounding them one by one cost over a millisecond a moment."""
+    return np.round(np.asarray(values, dtype=float), 2).tolist()
+
+
 def activity(brain: Brain) -> dict[str, list[float]] | None:
     """The settled state the brain just acted from: sensory, association and motor
     activations, rounded for the page."""
@@ -312,10 +321,10 @@ def activity(brain: Brain) -> dict[str, list[float]] | None:
         return None
     act = np.asarray(state.activation)[0]
     return {
-        "sensory": [round(float(v), 2) for v in act[brain.sensory_index]],
-        "association": [round(float(v), 2) for v in act[brain.association_index]],
-        "motor": [round(float(v), 2) for v in act[brain.motor_index]],
-        "all": [round(float(v), 2) for v in act],          # every neuron, in connectome order
+        "sensory": _rounded(act[brain.sensory_index]),
+        "association": _rounded(act[brain.association_index]),
+        "motor": _rounded(act[brain.motor_index]),
+        "all": _rounded(act),                              # every neuron, in connectome order
     }
 
 
@@ -616,7 +625,7 @@ class SpiderBrain:
         act = activity(brain)
         if act is not None and before is not None and reading.get("learned"):
             levels = learning_levels(self._post, before, _array(brain.brain.weights), int(brain.connectome.n))
-            act["repair"] = [round(float(v), 2) for v in levels]
+            act["repair"] = _rounded(levels)
         return {
             "commands": joint_commands(action[0], self.layout),
             "answer": [int(c) for c in np.atleast_1d(action[0])],   # the brain's own answer, one choice per slot
