@@ -444,6 +444,33 @@ def test_reset_takes_a_birth(tmp_path):
     assert plain["seed"] == 3 and life.senses.compass is True
 
 
+def test_the_heard_history_is_a_birth_option_saved_with_the_life(tmp_path):
+    """The page's history field sends the nursery's word: the newborn hears the moments before, a
+    save keeps the gene, a load composes the same brain again, and a birth without it has none."""
+    life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
+    assert life.policy.brain.history is None                   # the founder hears only this moment
+    plain = life.policy.brain.connectome.n
+    with pytest.raises(ValueError):
+        life.control("reset", {"genes": "history_decays=0,1.5"})   # refused before the old life ends
+    assert life.policy.brain.history is None
+    report = life.control("reset", {"genes": "history_decays=0,0.8,0.97"})
+    assert report["genes"] == {"history_decays": [0, 0.8, 0.97]}
+    brain = life.policy.brain
+    assert brain.history is not None and brain.connectome.n > plain
+    assert life.describe()["genes"] == {"history_decays": [0, 0.8, 0.97]}
+    for _ in range(4):
+        life.tick()
+    assert life.reward is not None
+    life.save()
+    again = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")   # the flags name no history
+    again.load()
+    assert again.genes == {"history_decays": [0, 0.8, 0.97]} and again.policy.brain.history is not None
+    assert again.policy.brain.connectome.n == brain.connectome.n
+    again.tick()
+    again.control("reset", {"genes": ""})                      # the founder again
+    assert again.policy.brain.history is None and again.policy.brain.connectome.n == plain
+
+
 def test_a_saved_life_keeps_its_seed_and_senses(tmp_path):
     life = Life("brain", seed=0, pace=0.0, runs=tmp_path, backend="cpu")
     life.control("reset", {"seed": 3, "compass": False, "genes": "gamma=0.99"})

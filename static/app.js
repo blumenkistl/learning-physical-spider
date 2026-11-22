@@ -697,6 +697,17 @@ function showProgress(p, moments) {
   }
   el.className = 'v' + (p.stalled ? ' warn' : '');
 }
+// The motor outputs on a rail, as a bar. Not coloured as an alarm: an output at rest counts as on
+// a rail, so a slot of twenty-seven with one clear answer reads 0.96 and a newborn about 0.9.
+// No brain, or no settled state yet, is no reading and an empty bar.
+function saturationBar(value) {
+  const none = value === null || value === undefined;
+  const now = performance.now();
+  if (now - (steadyAt.get('saturation') || -Infinity) < STEADY_EVERY_MS) return;
+  steadyAt.set('saturation', now);
+  $('saturation-fill').style.width = (none ? 0 : Math.max(0, Math.min(1, value)) * 100) + '%';
+  $('saturation').textContent = none ? '—' : fmt(value, 2);
+}
 const payRows = new Map();
 const payShown = new Set();   // the terms the panel has shown on this page
 
@@ -862,6 +873,10 @@ function describedBy(d) {
   $('birth-hold').value = genes.hold == null ? '' : genes.hold;
   $('birth-entropy').value = genes.entropy == null ? FOUNDER_ENTROPY : genes.entropy;
   // hold=none (not the founder's 0.9) has no number for the field, so it stays in the text
+  // the heard history's blocks: a list, or one number; none is the founder's and the empty field
+  const history = genes.history_decays;
+  $('birth-history').value = history == null ? '' : Array.isArray(history) ? history.join(',') : history;
+  delete genes.history_decays;
   for (const k of ['hold', 'entropy']) if (!(k === 'hold' && k in genes && genes.hold == null)) delete genes[k];   // maturity and the codes stay in the text: off the page
   $('birth-genes').value = geneWords(genes);
   const retunes = d.gene_changes ? d.gene_changes.length : 0;
@@ -1031,6 +1046,7 @@ function update(m) {
   const wantFull = m.want !== null && m.want !== undefined && m.want >= 0.99;
   // a full want is shown in red, not in words: the row stays one line; rewritten at most once a second
   steady('arousal', `${fmt(m.level, 2)} / ${fmt(m.want, 2)}`, 'v' + (wantFull ? ' warn' : ''));
+  saturationBar(m.saturation);
   $('sweeps').textContent = `${m.sweeps} (${m.learning_sweeps} learning)`;
   $('ms').textContent = fmt(m.ms, 1);
   $('pace').textContent = (m.pace > 0 ? `${m.pace}/s` : 'max') + (m.rate > 0 ? ` · ${fmt(m.rate, 0)}/s made` : '');
@@ -1176,11 +1192,14 @@ function heat(v) {
 // Reset gives birth to what the settings name; genes are composed once, so this is the one
 // place they are set. The page reloads on the new life: a reset is a new life, not a new frame.
 function birth() {
-  // hold and entropy have fields of their own; the rest (maturity and the codes among it) is the text, in the nursery's words
+  // hold, entropy and the heard history have fields of their own; the rest (maturity and the codes among it) is the text, in the nursery's words
   const words = [$('birth-genes').value.trim()];
   if ($('birth-hold').value !== '') words.push('hold=' + num($('birth-hold')));
   // entropy is sent whenever it is not the founder's, 0 included: an empty word would be the founder's 0
   if ($('birth-entropy').value !== '' && Number($('birth-entropy').value) !== FOUNDER_ENTROPY) words.push('entropy=' + Number($('birth-entropy').value));
+  // the heard history: decays between commas, spaces dropped (a word may hold none); empty is the founder's none
+  const history = $('birth-history').value.replace(/\s+/g, '').replace(/^,+|,+$/g, '');
+  if (history !== '') words.push('history_decays=' + history);
   return { seed: num($('birth-seed')), layout: $('birth-layout').value,
            compass: $('birth-compass').checked, ground: $('birth-ground').checked,
            // up only when it matters (ticked, or a life that has it): a server older than the up

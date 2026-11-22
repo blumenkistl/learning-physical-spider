@@ -37,6 +37,9 @@ button.on { background: #203a4a; border-color: var(--accent); }
 #speed-fill { position: absolute; top: 0; bottom: 0; left: 50%; width: 0; background: var(--accent); transition: left 0.1s, width 0.1s; }
 #speed-fill.back { background: #ff6b6b; }
 #speed-mean { position: absolute; top: -1px; bottom: -1px; left: 50%; width: 2px; margin-left: -1px; background: var(--ink); transition: left 0.3s; }
+.grid .satrow { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.satbar { position: relative; flex: 1; height: 8px; margin: 3px 0 2px; border: 1px solid #2d3647; border-radius: 4px; background: #1b2230; overflow: hidden; }
+#saturation-fill { position: absolute; top: 0; bottom: 0; left: 0; width: 0; background: var(--accent); transition: width 0.3s; }
 #learning { margin-top: 10px; }
 #learning .scale { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); }
 #learning .scale .v { color: var(--ink); }

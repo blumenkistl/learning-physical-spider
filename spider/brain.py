@@ -44,6 +44,7 @@ from typing import Any
 
 import numpy as np
 from cadence import Brain
+from cadence.plasticity import SATURATION_BAND
 
 from .model import JOINTS, LEGS
 from .senses import INPUTS
@@ -316,6 +317,18 @@ def activity(brain: Brain) -> dict[str, list[float]] | None:
         "motor": [round(float(v), 2) for v in act[brain.motor_index]],
         "all": [round(float(v), 2) for v in act],          # every neuron, in connectome order
     }
+
+
+def saturation(brain: Brain) -> float | None:
+    """The share of the motor outputs within Cadence's ``SATURATION_BAND`` of 0 or 1 in the settled
+    state the brain just acted from: there an output has no slope left and a nudge cannot move it
+    (cadence docs/reward.md, "the saturation latch"). Cadence's own measure (its learning report's
+    ``saturation``), read here every moment, learned from or not. A reading, never paid."""
+    state = brain.basal_ganglia.state
+    if state is None:
+        return None
+    motor = np.asarray(state.activation)[0][brain.motor_index]
+    return float(((motor < SATURATION_BAND) | (motor > 1.0 - SATURATION_BAND)).mean())
 
 
 # --- the brain view: the connectome laid out for the page, and the moment's learning ----------
@@ -617,6 +630,7 @@ class SpiderBrain:
             "ms": elapsed,
             "policy": self.policy,
             "activity": act,
+            "saturation": saturation(brain),
         }
 
     def describe(self) -> dict[str, Any]:
@@ -717,6 +731,7 @@ class FrozenPolicy:
             "sweeps": int(settlement.get("steps", 0)), "learning_sweeps": 0,
             "want": 0.0, "level": 0.0, "ms": (time.perf_counter() - began) * 1000.0,
             "policy": self.policy, "activity": activity(self.brain),
+            "saturation": saturation(self.brain),
         }
 
     def has_pending(self) -> bool:

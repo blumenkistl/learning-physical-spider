@@ -944,6 +944,7 @@ class Life:
             "ms": round(float(reading.get("ms", 0.0)), 2),
             "commands": reading.get("commands"),
             "activity": reading.get("activity"),
+            "saturation": None if reading.get("saturation") is None else round(float(reading["saturation"]), 3),
             "refusals": int(getattr(self.policy, "refusals", 0)),
             "last_error": getattr(self.policy, "last_error", None),
             "paused": self.paused,

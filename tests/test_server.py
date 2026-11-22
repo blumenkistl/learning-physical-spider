@@ -63,6 +63,8 @@ def test_the_page_offers_the_law_this_life_has_and_no_other():
         assert f'id="law-{key}"' not in page
     assert "const LAW_KEYS = [" + ", ".join(f"'{k}'" for k in shown) + "];" in app
     assert 'id="arena"' in page and all(f'<option value="{a}">' in page for a in ("flat", "hills", "steep"))
+    # the heard history has a field of its own in the next birth, sent as the nursery's word
+    assert 'id="birth-history"' in page and "'history_decays=' + history" in app
     for gone in ("drift", "slope_pull", "muscle_rate", "birth-muscles", "birth-setpoints"):
         assert f'id="{gone}"' not in page and f'id="law-{gone}"' not in page, gone
 
@@ -116,6 +118,7 @@ async def test_brainview_route(tmp_path):
         assert len(payload["cells"]) == payload["counts"]["neurons"] == len(payload["order"])
         state = await (await client.get("/api/state")).json()
         assert len(state["activity"]["all"]) == payload["counts"]["neurons"]
+        assert 0.0 <= state["saturation"] <= 1.0      # the motor outputs on a rail, the page's bar
 
 
 def test_flags_mirror_the_nursery_and_the_environment_sets_defaults(tmp_path, monkeypatch):

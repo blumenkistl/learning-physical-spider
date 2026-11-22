@@ -36,6 +36,10 @@ def test_newborn_first_moments():
         assert all(c in (0, 1, 2) for c in out["commands"])
         assert not out["refused"]
         assert out["activity"] is not None and len(out["activity"]["motor"]) == ACTIONS
+        # the share of the motor outputs on a rail, counted as cadence counts it, from the same state
+        motor = np.asarray(life.brain.basal_ganglia.state.activation)[0][life.brain.motor_index]
+        assert out["saturation"] == pytest.approx(float(((motor < 0.02) | (motor > 0.98)).mean()))
+        assert 0.0 <= out["saturation"] <= 1.0
         spider.step(out["commands"])
         reward = 0.1
     assert life.has_pending()
