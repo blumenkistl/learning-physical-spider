@@ -814,6 +814,23 @@ function stanceSum() {
   $('stance-sum').textContent = `feet → charge  ${steps.join(' · ')}` + (stand ? ` · stand pay +${stand} from ${floor}` : '');
 }
 for (const id of ['law-stance_pay', 'law-stance_floor', 'law-stand_pay']) $(id).addEventListener('input', stanceSum);
+// The worst charge at the values in the fields (spider/life.py's worst_charge): every charge at its
+// worst, no foot down, every leg held up, lying, head down, on its back at full effort. At the cap
+// or over it the hints alone can hold a moment's reward at the cap, where every act pays the same
+// and nothing is learned from the difference; the names of the fields that make it turn red.
+const CHARGE_FIELDS = ['stance_pay', 'stance_floor', 'idle_leg_pay', 'low_pay', 'rear_pay', 'head_pay', 'upright_pay', 'torque_pay'];
+function worstSum() {
+  const v = k => Number($('law-' + k).value) || 0;
+  const floor = $('law-stance_floor').value === '' ? 4 : v('stance_floor');
+  const worst = v('stance_pay') * floor + 8 * v('idle_leg_pay') + v('low_pay') + v('rear_pay') + v('head_pay')
+    + 2 * v('upright_pay') + v('torque_pay');
+  const cap = (described && described.reward && described.reward.cap) || 0.5;
+  for (const k of CHARGE_FIELDS) {
+    const label = $('law-' + k).closest('label');
+    label.classList.toggle('over-cap', worst >= cap);
+  }
+}
+for (const k of CHARGE_FIELDS) $('law-' + k).addEventListener('input', worstSum);
 // A number field keeps its own range: a value past min or max is set back to that end when the
 // field is left, and when it is read (40 typed into backward pay, a share 0 to 1, becomes 1).
 function clamp(field) {
@@ -861,6 +878,7 @@ function describedBy(d) {
     lawFilled = lawNow;
   }
   stanceSum();
+  worstSum();
   $('arena').value = r.arena || 'flat';
   if (lastPose) drawArena(r.arena || 'flat', d.terrains, lastPose.offset);
   $('birth-seed').value = d.seed;
