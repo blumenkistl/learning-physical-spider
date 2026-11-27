@@ -156,8 +156,9 @@ ARENA = "flat"          # the ground: flat (the founder, MuJoCo's plane z = 0), 
                         # (README, "The hills"). Unmeasured on this body
 BLOCK = 100             # moments per statistics block
 BLOCKS_KEPT = 60
-PROGRESS_SPAN = 10_000  # moments a row of the long record averages (a reading, never paid)
-PROGRESS_KEPT = 300     # rows of the long record kept and saved: 3 million moments
+PROGRESS_SPAN = 30_000  # moments a row of the long record averages (a reading, never paid); chosen (the owner's
+                        # choice, 2026-11-22): 10_000 until then, whose windows swung by about 0.03 on a plateau
+PROGRESS_KEPT = 300     # rows of the long record kept and saved: 9 million moments
 PROGRESS_MARGIN = 0.01  # reward per moment a window must beat the best before it by, to count as progress
 PROGRESS_STALL = 100_000  # moments without progress after which the page says so
 FORMAT = "learning-physical-spider/1"
@@ -426,7 +427,8 @@ class Progress:
         row = {"moment": int(rows[-1]["moment"]),
                "reward_per_moment": round(sum(b["reward_per_moment"] for b in rows) / len(rows), 4),
                "mean_stance": round(sum(b["mean_stance"] for b in rows) / len(rows), 3),
-               "upright_share": round(sum(b["upright_share"] for b in rows) / len(rows), 3)}
+               "upright_share": round(sum(b["upright_share"] for b in rows) / len(rows), 3),
+               "span": PROGRESS_SPAN}
         self.rows.append(row)
         if self.best is None or row["reward_per_moment"] > self.best + PROGRESS_MARGIN:
             self.best = row["reward_per_moment"]
@@ -445,13 +447,19 @@ class Progress:
 
     def state_dict(self) -> dict[str, Any]:
         return {"rows": list(self.rows), "open": list(self._open), "start": self._start,
-                "best": self.best, "best_at": self.best_at, "since": self.since}
+                "best": self.best, "best_at": self.best_at, "since": self.since, "span": PROGRESS_SPAN}
 
     @classmethod
     def from_state(cls, state: dict[str, Any] | None, moments: int) -> "Progress":
-        """A saved record continues as it was; a life saved before the record counts from its load."""
+        """A saved record continues as it was; a life saved before the record counts from its load,
+        and so does one saved under another ``PROGRESS_SPAN``: its rows are kept, each naming the span
+        it averaged (10,000 for a record from before rows named one), and the best is counted again
+        from the load, since a window of another length is no measure for this one's."""
         progress = cls(since=moments)
-        if state:
+        if state and state.get("span", 10_000) != PROGRESS_SPAN:
+            progress.rows = deque(({"span": state.get("span", 10_000), **row} for row in state["rows"]),
+                                  maxlen=PROGRESS_KEPT)
+        elif state:
             progress.rows = deque(state["rows"], maxlen=PROGRESS_KEPT)
             progress._open = list(state["open"])
             progress._start = state["start"]

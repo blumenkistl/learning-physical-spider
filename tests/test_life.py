@@ -1369,6 +1369,17 @@ def test_progress_names_a_stall_and_a_law_change_counts_again():
     assert again.reading(moment) == reading
 
 
+def test_a_record_of_another_span_keeps_its_rows_and_counts_again_from_the_load():
+    from spider.life import PROGRESS_SPAN, Progress
+    old = {"rows": [{"moment": 10_000, "reward_per_moment": -0.1, "mean_stance": 1.0, "upright_share": 1.0}],
+           "open": [], "start": None, "best": -0.1, "best_at": 10_000, "since": 0}   # saved before rows named a span
+    assert PROGRESS_SPAN != 10_000
+    again = Progress.from_state(old, 50_000)
+    reading = again.reading(50_000)
+    assert reading["rows"] == [{"span": 10_000, **old["rows"][0]}]
+    assert reading["best"] is None and reading["since"] == 50_000 and reading["span"] == PROGRESS_SPAN
+
+
 def test_progress_is_saved_with_the_life(tmp_path):
     life = Life("brain", seed=0, pace=0, runs=tmp_path, backend="cpu")
     for _ in range(BLOCK + 2):
