@@ -22,10 +22,10 @@ git clone https://github.com/blumenkistl/learning-physical-spider.git
 cd learning-physical-spider
 sudo apt install python3-venv python3-pip             # once, on Debian or Ubuntu; WSL2 too
 python3 -m venv .venv                                 # the project's own Python, in .venv/
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m pytest                            # 125 pass, in about a minute
-.venv/bin/python server.py                            # then open http://127.0.0.1:8080
+.venv/bin/python3 -m pip install --upgrade pip
+.venv/bin/python3 -m pip install -r requirements.txt
+.venv/bin/python3 -m pytest                            # 125 pass, in about a minute
+.venv/bin/python3 server.py                            # then open http://127.0.0.1:8080
 ```
 
 The venv keeps the project's packages apart from the system's. It needs no activation: every
@@ -42,8 +42,8 @@ under Linux (WSL2); other versions and systems are untried.
 The two entry points, the headless nursery and the server with the page:
 
 ```
-.venv/bin/python -m spider.nursery --moments 3000 --policy brain --seed 0
-.venv/bin/python server.py --port 8081 --runs runs/try --autosave-minutes 0
+.venv/bin/python3 -m spider.nursery --moments 3000 --policy brain --seed 0
+.venv/bin/python3 server.py --port 8081 --runs runs/try --autosave-minutes 0
 ```
 
 The nursery's blocks report the share of moments upright and the falls beside forward metres
@@ -72,7 +72,7 @@ judgement and labelled so.
 ### Stage 1: stand up (measured on newborns)
 
 ```bash
-.venv/bin/python server.py --layout pair --compass --ground --up --load --gene hold=0.9 --gene arousal.need=0.1 \
+.venv/bin/python3 server.py --layout pair --compass --ground --up --load --gene hold=0.9 --gene arousal.need=0.1 \
   --stance-pay 0.08 --stance-floor 3 --stand-pay 0.06 --carry --carry-back \
   --low-pay 0.1 --rear-pay 0.1 --head-pay 0.01 --touchdown-pay 0.05 --upright-pay 0.01 \
   --course 1.238 --backward-pay 1 --pay-per-metre 60
@@ -1030,9 +1030,9 @@ and a reset starts the newborn's genes again. Unmeasured on this body.
 The venv and the packages are set up once, as in "Installation" at the top. Then:
 
 ```sh
-.venv/bin/python -m pytest                                        # the tests
-.venv/bin/python -m spider.nursery --moments 3000 --policy brain  # a headless life, measured
-.venv/bin/python server.py                                        # the page, at http://127.0.0.1:8080
+.venv/bin/python3 -m pytest                                        # the tests
+.venv/bin/python3 -m spider.nursery --moments 3000 --policy brain  # a headless life, measured
+.venv/bin/python3 server.py                                        # the page, at http://127.0.0.1:8080
 ```
 
 CPU only: no torch, no CUDA. One moment costs about 1 ms of physics on the development
