@@ -33,7 +33,7 @@ command in this README names `.venv/bin/python`. Whoever prefers it activates it
 `source .venv/bin/activate` and writes `python` instead. `.venv/` is gitignored, and so is
 `runs/`, where the server saves the life and continues it from.
 
-`requirements.txt` brings everything: `cadence-net[fast]==0.99.0` (the brain; `[fast]` is numba
+`requirements.txt` brings everything: `cadence-net[fast]==0.104.2` (the brain; `[fast]` is numba
 and scipy, the compiled CPU path), `mujoco==4.0.1` (the physics, a wheel that needs no system
 library and no display), numpy, aiohttp (the server) and pytest with its plugins (the tests).
 CPU only: nothing installs torch or CUDA, and no graphics card is used. Developed on Python 3.12
