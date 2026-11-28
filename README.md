@@ -13,6 +13,10 @@ falls. What came over from learning-spider, and how, is in [PORTING.md](PORTING.
 measured on newborns: a start law that brings three of four off the belly ("How to get your spider
 running"). Walking straight is not yet learned; everything else is readings or unmeasured.
 
+![The page: the life's readings and the reward term by term on the left, the body on the hills in the middle, the brain's neurons and the world's settings on the right](screenshots/spider1.png)
+
+*The page on a live life at moment 307,382 (body `2e3c21532be30ecf`, a slot per pair, the hills).*
+
 ## Installation
 
 From nothing to the page, on a new computer:
