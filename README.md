@@ -275,7 +275,11 @@ between legs. Whether the body stands is a fact of the physics, not a test.
     mean of four): upright 36 % of the time against 72 %, the head on the floor in 30 % of the
     upright moments against 8 %, a fifth of the moments on the back against none (one run 82 %),
     3.0 m forward against 2.9 m, two of four runs ending fallen (24,171 and 49,337 moments);
-  - knee: 0.04 N·m at most, stiffness 1.0 N·m/rad;
+  - knee: 0.04 N·m at most flexing (−, the leg pressing the body up) and 0.02 N·m extending
+    (+, the tibia up and out), stiffness 1.0 N·m/rad. Chosen (the owner's choice, 2026-11-27),
+    not measured: a spider's femur-patella joint has no extensor muscle and extends by
+    haemolymph pressure, weaker than its flexors. 0.04 both ways until `3115e097637e9120`, the
+    body of the live pair life; a save of that body is refused by this one (`2e3c21532be30ecf`);
   - joint damping set so that a free joint at full torque runs at twice learning-spider's rates
     (3.0 rad/s for both hip hinges, 5.0 for the knee, `RATE_SCALE` 2) since body
     `9314a7863d588419`; learning-spider's own (1.5 and 2.5) until `df58a9084a68f1c6` (below).

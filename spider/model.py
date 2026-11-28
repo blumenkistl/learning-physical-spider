@@ -129,6 +129,11 @@ LIFT_TORQUE = 0.06                      # N m: a stance foot of four carries 0.0
                                         # were tried and lay fallen more (README)
 LIFT_STIFFNESS = 1.5
 KNEE_TORQUE = 0.04                      # N m: a stance knee of four carries about 0.01
+KNEE_EXTEND_TORQUE = 0.02               # N m, chosen (the owner's choice, 2026-11-27), not measured: the knee
+                                        # extends (+, the tibia up and out) with half the torque it flexes with
+                                        # (-, the leg pressing the body up), after the spider's femur-patella
+                                        # joint, which has no extensor muscle and extends by haemolymph pressure.
+                                        # KNEE_TORQUE both ways until 3115e097637e9120
 KNEE_STIFFNESS = 1.0
 RATE_SCALE = 2.0                        # chosen (2026-11-16, the owner's choice after a probe of x1, x2, x3, README):
                                         # the joints run twice as fast as in body df58a9084a68f1c6 (1.5, 1.5, 2.5)
@@ -250,7 +255,7 @@ def _actuators() -> str:
         lines.append(f'    <position name="{name}_lift" joint="{name}_lift" kp="{LIFT_STIFFNESS}" '
                      f'ctrlrange="{_f(*LIFT_RANGE)}" forcerange="{_f(-LIFT_TORQUE, LIFT_TORQUE)}"/>')
         lines.append(f'    <position name="{name}_knee" joint="{name}_knee" kp="{KNEE_STIFFNESS}" '
-                     f'ctrlrange="{_f(*KNEE_RANGE)}" forcerange="{_f(-KNEE_TORQUE, KNEE_TORQUE)}"/>')
+                     f'ctrlrange="{_f(*KNEE_RANGE)}" forcerange="{_f(-KNEE_TORQUE, KNEE_EXTEND_TORQUE)}"/>')
     if ADHESION > 0:                                # after the twenty-four muscles: the soles' fixed pull
         lines += [f'    <adhesion name="{n}_sole" body="{n}_sole" ctrlrange="0 1" gain="{ADHESION:g}"/>' for n in LEG_NAMES]
     return "\n".join(lines)
