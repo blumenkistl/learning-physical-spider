@@ -818,11 +818,12 @@ for (const id of ['law-stance_pay', 'law-stance_floor', 'law-stand_pay']) $(id).
 // worst, no foot down, every leg held up, lying, head down, on its back at full effort. At the cap
 // or over it the hints alone can hold a moment's reward at the cap, where every act pays the same
 // and nothing is learned from the difference; the names of the fields that make it turn red.
-const CHARGE_FIELDS = ['stance_pay', 'stance_floor', 'idle_leg_pay', 'low_pay', 'rear_pay', 'head_pay', 'upright_pay', 'torque_pay'];
+const CHARGE_FIELDS = ['stance_pay', 'stance_floor', 'idle_leg_pay', 'low_pay', 'rear_pay', 'head_pay', 'sway_pay', 'upright_pay', 'torque_pay'];
 function worstSum() {
   const v = k => Number($('law-' + k).value) || 0;
   const floor = $('law-stance_floor').value === '' ? 4 : v('stance_floor');
   const worst = v('stance_pay') * floor + 8 * v('idle_leg_pay') + v('low_pay') + v('rear_pay') + v('head_pay')
+    + 0.5 * v('sway_pay')
     + 2 * v('upright_pay') + v('torque_pay');
   const cap = (described && described.reward && described.reward.cap) || 0.5;
   for (const k of CHARGE_FIELDS) {
@@ -921,7 +922,7 @@ function describedBy(d) {
 // high_water and old_ground stay law settings (the nursery's --high-water and --old-ground) but are
 // not on the page: unmeasured on this body and off; a life born with them still shows its mark.
 const FOUNDER_ENTROPY = 0.1;   // spider/brain.py's founder gene (tests/test_server.py holds them equal)
-const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry', 'carry_back', 'idle_leg_pay', 'idle_moments', 'idle_height', 'low_pay', 'rear_pay', 'head_pay', 'touchdown_pay'];
+const LAW_KEYS = ['stance_pay', 'yaw_pay', 'window', 'pay_per_metre', 'backward_pay', 'course', 'strict', 'upright_pay', 'stance_upright', 'torque_pay', 'stance_floor', 'stand_pay', 'carry', 'carry_back', 'idle_leg_pay', 'idle_moments', 'idle_height', 'low_pay', 'rear_pay', 'head_pay', 'touchdown_pay', 'sway_pay', 'sway_moments'];
 // The nursery's words for a brain's gene overrides: {gamma: 0.99, arousal: {need: 0}} → "gamma=0.99 arousal.need=0".
 function geneWords(genes, prefix = '') {
   return Object.entries(genes || {}).map(([k, v]) =>
@@ -952,6 +953,7 @@ function law(m) {
   if (r.rear_pay) parts.push(`rear ${r.rear_pay}`);
   if (r.head_pay) parts.push(`head ${r.head_pay}`);
   if (r.touchdown_pay) parts.push(`touchdown ${r.touchdown_pay}`);
+  if (r.sway_pay) parts.push(`sway ${r.sway_pay}${r.sway_moments && r.sway_moments !== 20 ? ' over ' + r.sway_moments : ''}`);
   if (r.idle_leg_pay) parts.push(`idle leg ${r.idle_leg_pay}${r.idle_moments && r.idle_moments !== 20 ? ' after ' + r.idle_moments : ''}`);
   if (r.upright_pay) parts.push(`upright ${r.upright_pay}`);
   if (r.torque_pay) parts.push(`torque ${r.torque_pay}`);
@@ -1089,7 +1091,8 @@ function update(m) {
     ? `${signed(meanPaid)} over ${paid.length * 100} · last ${signed(lastPaid)}` + (lastPaid <= -0.499 ? ' · cap' : '')
     : '—', 'v' + (paid.length && (lastPaid <= -0.499 || meanPaid < 0) ? ' warn' : ''));
   const termed = m.blocks.filter(b => b.terms);
-  const TERM_NAMES = ['progress', 'stand', 'touchdown', 'idle', 'low', 'rear', 'head', 'stance', 'yaw', 'upright', 'torque'];
+  // the page's order, not the sum's (spider/life.py's TERMS): what is given first, then what is taken
+  const TERM_NAMES = ['progress', 'stand', 'touchdown', 'backward', 'idle', 'low', 'rear', 'head', 'sway', 'stance', 'yaw', 'upright', 'torque'];
   const termMean = k => termed.reduce((a, b) => a + (b.terms[k] || 0), 0) / termed.length;
   // a term once shown stays shown (at 0 when it pays nothing now), so the rows below do not move
   for (const k of TERM_NAMES) if (termed.some(b => b.terms[k])) payShown.add(k);

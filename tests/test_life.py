@@ -1131,6 +1131,7 @@ def test_the_reward_is_its_terms_summed_and_capped():
         assert set(terms) == set(TERMS)
         assert all(terms[k] <= 0 for k in TERMS if k not in ("progress", "stand"))   # charges are negative
         assert capped(terms) == pay(progress, **kwargs)
+        assert terms["progress"] >= 0 and terms["backward"] <= 0 and min(terms["progress"], -terms["backward"]) == 0
     terms = pay_terms(0.0, stance=0, stance_pay=0.2, idle_legs=8, idle_leg_pay=0.1)
     assert capped(terms) == -0.5 and sum(terms.values()) < -0.5                  # the cap holds the sum
 
@@ -1186,6 +1187,37 @@ def test_a_touchdown_is_counted_only_after_the_idle_moments_aloft(tmp_path):
     assert before and down > 0                              # the newborn stands on its feet
     assert life.touchdowns == down
     assert life.reward == pytest.approx(min(0.5, 0.05 * down + life._block[-1]["terms"]["progress"]), abs=1e-9)
+
+
+def test_motion_that_nets_nothing_is_charged_the_sway_pay(tmp_path):
+    assert pay(0.0, sway=0.002, sway_pay=1.0) == pytest.approx(-PROGRESS_PAY * 0.002)
+    assert pay(0.0, sway=0.002) == 0.0                                          # off by default
+    assert pay(0.0, sway=1.0, sway_pay=2.0) == -0.5                             # held within the cap
+    life = Life("random", seed=0, pace=0, runs=tmp_path, sway_pay=1.0, sway_moments=4)
+    assert life.law()["sway_pay"] == 1.0 and "sway 1 over 4" in law_text(life.law())
+    for bad in ({"sway_pay": -0.1}, {"sway_moments": 1}):
+        with pytest.raises(ValueError):
+            Life("random", seed=0, pace=0, runs=tmp_path, **bad)
+    life._sway.extend([0.002, -0.002, 0.002])          # forward, back, forward: 0.006 gone, 0.002 netted
+    life.tick()
+    gone = [0.002, -0.002, 0.002, life._sway[-1]]
+    swayed = (sum(abs(v) for v in gone) - abs(sum(gone))) / 4
+    assert life._block[-1]["terms"]["sway"] == pytest.approx(-min(PROGRESS_PAY * swayed, 0.5), abs=1e-12)
+    life._sway.clear()
+    life._sway.extend([0.001, 0.001, 0.001])           # one way: nothing gone back and forth
+    life.tick()
+    last = life._sway[-1]                              # only this moment's own motion, if it went back, is charged
+    assert life._block[-1]["terms"]["sway"] == pytest.approx(-PROGRESS_PAY * 2 * min(max(-last, 0.0), 0.003) / 4, abs=1e-12)
+
+
+def test_the_sway_window_is_saved_and_loaded(tmp_path):
+    life = Life("random", seed=0, pace=0, runs=tmp_path, sway_pay=0.5)
+    for _ in range(30):
+        life.tick()
+    life.save()
+    again = Life("random", seed=0, pace=0, runs=tmp_path, sway_pay=0.5)
+    again.load()
+    assert list(again._sway) == list(life._sway) and len(again._sway) == 20
 
 
 def test_the_living_brains_entropy_is_retuned_noted_and_saved(tmp_path):

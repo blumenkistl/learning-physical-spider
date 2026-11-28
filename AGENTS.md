@@ -50,7 +50,8 @@ window on that one life.
   abdomen with its prosoma held up,
   and `head_pay` (taken while the head touches the floor) after a body leant on its nose, and
   `touchdown_pay` (given per leg set down after `idle_moments` aloft) after legs held no preference
-  under the held-up-leg charge; all are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
+  under the held-up-leg charge, and `sway_pay` (taken for motion gone back and forth for nothing
+  over `sway_moments`) after a live body rocked; all are off by default and unmeasured until the README says otherwise. Shaping terms keep learning-spider's rules
   (off by default, measured dose, labelled as shaping).
 - **The arena is the world's, not the body's.** `flat` (the plane, the founder), `hills` or
   `steep` (learning-spider's waves, steep at 2.5 times hills, as a MuJoCo height field, `spider/body.py`),

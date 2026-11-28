@@ -440,6 +440,17 @@ each off in the shipped law, and one setting of the outcome (`carry`):
   0.11 m on its front legs and sat on its abdomen, with the belly down in 78 % of the moments, for
   2.2 million moments (2026-11-17). Added on the owner's choice. Its dose is measured in "How to
   get your spider running".
+- `sway_pay` (`--sway-pay`, the page's law panel, "sway pay"; `sway_moments`, `--sway-moments`,
+  20 by default, one second, chosen): taken for motion that nets nothing. Over the last
+  `sway_moments` moments the paid motion gone back and forth (each moment's progress summed
+  unsigned, less the progress netted) is charged at `sway_pay` times the pay per metre, a
+  moment's mean, held within the cap. A walk that goes one way costs nothing; a body rocking
+  forward and back pays at 1 about what its forward half earns. Under `backward_pay` 1 a sway
+  already nets zero; this charge makes it a loss, where `backward_pay` above 1 would charge every
+  slip of a walking foot too. A rocking slower than the window is partly read as going somewhere,
+  and a walk's own sway within a stride is read as sway. The block's `terms` read it as `sway`; the
+  worst charge counts it at the cap. Added on the owner's choice after a live body rocked
+  (2026-11-27); shaping, off by default, unmeasured.
 - `touchdown_pay` (`--touchdown-pay`, the page's law panel, "touchdown"): given per leg whose
   foot comes down after more than `idle_moments` off the floor, while upright; each block counts
   its `touchdowns`, the nursery `touchdowns_per_1000`. The held-up-leg charge is a state, and a
@@ -480,11 +491,13 @@ each off in the shipped law, and one setting of the outcome (`carry`):
   spread (1 % to 88 % head down): no dose changed the posture in 60,000 moments.
 
 The reward is the terms summed and held within the cap of 0.5 (`pay_terms`, `capped`). Each
-block of 100 moments reads every term's mean a moment before the cap (`terms`: progress, stand,
-idle, low, head, stance, yaw, upright, torque; charges negative) and the share of its moments
+block of 100 moments reads every term's mean a moment before the cap (`terms`: progress, backward,
+stand, touchdown, idle, low, rear, head, sway, stance, yaw, upright, torque; charges negative;
+`progress` is forward progress paid and `backward` backward progress charged, apart since
+2026-11-27, before which `progress` held both) and the share of its moments
 the cap held (`capped_share`); the page shows both ("reward terms", "worst charge / capped").
 `/api/describe` names the law's `worst_charge`: the most its hints can take in one moment, every
-charge at its worst (no foot down, every leg held up, lying, head down, on the back at full
+charge at its worst (no foot down, every leg held up, lying, head down, swaying at the cap, on the back at full
 effort; the yaw hint has no bound and is left out, and so is backward progress, an outcome). A
 live law change whose worst charge reaches the cap is noted, not refused: a saved life keeps its
 law. Where the hints meet the cap every act pays the same and nothing is learned from the

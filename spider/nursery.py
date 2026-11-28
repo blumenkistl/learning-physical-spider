@@ -28,7 +28,7 @@ from typing import Any
 from .brain import DEFAULT_LAYOUT, LAYOUTS
 from .brain import genes_from, parse_gene  # noqa: F401  (the server imports them from here too)
 from .life import (BACKWARD_PAY, BLOCK, COURSE, HIGH_WATER, OLD_GROUND, PROGRESS_PAY, PROGRESS_WINDOW, STANCE_PAY,
-                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, CARRY_BACK, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, REAR_PAY, HEAD_PAY, TOUCHDOWN_PAY, ARENA,
+                   STANCE_UPRIGHT, TORQUE_PAY, UPRIGHT_PAY, STANCE_FLOOR, STAND_PAY, CARRY, CARRY_BACK, IDLE_LEG_PAY, IDLE_MOMENTS, IDLE_HEIGHT, LOW_PAY, REAR_PAY, HEAD_PAY, TOUCHDOWN_PAY, SWAY_PAY, SWAY_MOMENTS, ARENA,
                    STRICT, UPRIGHT, YAW_PAY, Life, checked_course)
 from .body import ARENAS
 from .model import LEGS, MODEL_DIGEST
@@ -85,6 +85,11 @@ def law_arguments(parser: argparse.ArgumentParser, default=lambda name, value: v
     parser.add_argument("--touchdown-pay", type=float, default=float(default("TOUCHDOWN_PAY", TOUCHDOWN_PAY)),
                         help=f"shaping: reward given per leg whose foot comes down after more than the idle "
                              f"moments off the floor, while upright (default {TOUCHDOWN_PAY}; 0 = off)")
+    parser.add_argument("--sway-pay", type=float, default=float(default("SWAY_PAY", SWAY_PAY)),
+                        help=f"shaping: reward taken for motion that nets nothing, the paid motion gone back and forth "
+                             f"over the sway moments at this share of the pay per metre (default {SWAY_PAY}; 0 = off)")
+    parser.add_argument("--sway-moments", type=int, default=int(default("SWAY_MOMENTS", SWAY_MOMENTS)),
+                        help=f"moments the sway is read over (default {SWAY_MOMENTS})")
     parser.add_argument("--torque-pay", type=float, default=float(default("TORQUE_PAY", TORQUE_PAY)),
                         help=f"shaping: reward taken per unit of the moment's effort, the muscles' torque as a share "
                              f"of each one's most (0 slack, 1 all at full strength; default {TORQUE_PAY}; 0 = off)")
@@ -149,7 +154,8 @@ def life_kwargs(args: argparse.Namespace) -> dict[str, Any]:
         stance_floor=args.stance_floor, stand_pay=args.stand_pay, carry=args.carry, carry_back=args.carry_back,
         idle_leg_pay=args.idle_leg_pay, idle_moments=args.idle_moments,
         idle_height=args.idle_height, low_pay=args.low_pay, rear_pay=args.rear_pay,
-        head_pay=args.head_pay, touchdown_pay=args.touchdown_pay, arena=args.arena,
+        head_pay=args.head_pay, touchdown_pay=args.touchdown_pay,
+        sway_pay=args.sway_pay, sway_moments=args.sway_moments, arena=args.arena,
     )
 
 
